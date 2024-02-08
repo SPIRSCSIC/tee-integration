@@ -1,8 +1,47 @@
 # TEE integration
-The first step is cloning the
-[libgroupsig](https://gitlab.gicp.es/spirs/libgroupsig.git) repository and
-[mondrian](https://gitlab.gicp.es/spirs/mondrian.git)
-inside the [spirs_tee_sdk](https://gitlab.com/spirs_eu/spirs_tee_sdk) repository
+## Automated process
+In order to compile the project, first run the script `setup.sh`
+
+```bash
+scripts/setup.sh
+```
+
+If you have not compiled the `spirs_keystone:22.04` container yet, you need
+to create a file named `token` with your gitlab credentials in the directory `spirs_tee_sdk/docker`,
+use the following the format
+
+```
+username=your_username
+password=your_password_or_token
+```
+
+Then compile the container (it will take around 15-20min)
+
+```bash
+cd spirs_tee_sdk
+DOCKER_BUILDKIT=1 docker build --no-cache --secret=id=gitlab,src=$PWD/docker/token -f docker/Dockerfile -t spirs_keystone:22.04 .
+```
+
+After you have compiled the container, run the script `container.sh`
+
+```bash
+cd .. # if you are inside spirs_tee_sdk directory
+scripts/container.sh
+```
+
+Finally connect to `spirs` container and run the compilation command
+
+```bash
+docker exec -it spirs bash
+cd /spirs_tee_sdk
+cmake -B build && make -C build && make -C build -j image && make -C build -j qemu
+```
+
+## Manual process
+The first step is to clone the
+[libgroupsig](https://gitlab.gicp.es/spirs/libgroupsig.git) and
+[mondrian](https://gitlab.gicp.es/spirs/mondrian.git) repositories
+inside [spirs_tee_sdk](https://gitlab.com/spirs_eu/spirs_tee_sdk) repository
 
 ```bash
 git clone --depth 1 https://gitlab.com/spirs_eu/spirs_tee_sdk
@@ -19,7 +58,7 @@ patch -u spirs_tee_sdk/CMakeLists.txt -i patches/cmakelists.patch
 patch -u spirs_tee_sdk/docker/Dockerfile -i patches/dockerfile.patch
 ```
 
-Copy the files with the instructions on how to compile our project:
+Copy the required files to compile our project
 
 ```bash
 cp -r modules/libgroupsig/tee spirs_tee_sdk/modules/libgroupsig
@@ -37,16 +76,23 @@ Compile the container following the instruction in `spirs_tee_sdk/docker`
 cd spirs_tee_sdk
 DOCKER_BUILDKIT=1 docker build --no-cache --secret=id=gitlab,src=$PWD/docker/token -f docker/Dockerfile -t spirs_keystone:22.04 .
 ```
+> Remember that If you have not compiled the `spirs_keystone:22.04` container yet, you need
+> to create a file named `token` with your gitlab credentials in the directory `spirs_tee_sdk/docker`,
+> use the following the format
+> ```
+> username=your_username
+> password=your_password_or_token
+> ```
 
-Launch the container and build the project
+Launch the container in detached mode
 
 ```bash
-docker run --name spirs -it --rm -v $PWD/spirs_tee_sdk:/spirs_tee_sdk spirs_keystone:22.04
+docker run --name spirs -it --rm -d -v $PWD/spirs_tee_sdk:/spirs_tee_sdk spirs_keystone:22.04
 ```
 
 > Change the -v path accordingly so `spirs_tee_sdk` directory is mounted inside the container
 
-In another shell, patch the buildroot configuration file to install flask and the run-qemu script
+Patch the buildroot configuration file to install flask, and the run-qemu script
 
 ```bash
 docker cp spirs:/keystone/build/buildroot.build/.config .
@@ -57,15 +103,16 @@ docker cp .config spirs:/keystone/build/buildroot.build/
 docker cp run-qemu.sh.in spirs:/keystone/scripts/
 ```
 
-Inside the container, we need to compile the buildroot with the new changes
+Compile buildroot with new changes
 
 ```bash
-make -C build/buildroot.build
+docker exec spirs make -C build/buildroot.build
 ```
 
-Finally, compile the project
+Connect to container and compile the project
 
 ```bash
+docker exec -it spirs bash
 cd /spirs_tee_sdk
 cmake -B build && make -C build && make -C build -j image && make -C build -j qemu
 ```
