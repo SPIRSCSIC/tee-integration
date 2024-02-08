@@ -1,0 +1,21 @@
+- We are evolving from KTY04 to CPY06 (to have traceability) and PS16.
+- We have to take into account this works
+ - https://crypto.stanford.edu/pbc/notes/ep/
+ - https://cardis2021.its.uni-luebeck.de › papers › CARDIS2021_Lavice.pdf
+ - https://github.com/IBM/libgroupsig
+ - https://crypto.stanford.edu/pbc/manual/ch02s01.html
+ - https://link.springer.com/chapter/10.1007/978-3-030-97348-3_11
+
+- BBS+ form BBS04
+  - it is partly included in GL19, DL21
+
+- Safe Curves
+  - https://safecurves.cr.yp.to/
+  - https://link.springer.com/article/10.1007/s41635-018-0048-z
+- Pairings
+  - https://link.springer.com/chapter/10.1007/978-3-642-25516-8_17
+  - https://www.sciencedirect.com/science/article/abs/pii/S0167926018300336
+- https://link.springer.com/article/10.1007/s11786-022-00531-w
+- BLS12-381 curve
+  - https://github.com/zkcrypto/bls12_381
+  - https://ieeexplore.ieee.org/document/9593932

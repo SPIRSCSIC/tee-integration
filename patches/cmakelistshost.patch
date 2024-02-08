@@ -1,0 +1,14 @@
+diff --git a/host/CMakeLists.txt b/host/CMakeLists.txt
+index 4155691..065fb22 100644
+--- a/host/CMakeLists.txt
++++ b/host/CMakeLists.txt
+@@ -7,7 +7,8 @@ use_riscv_toolchain(${BITS})
+ set(HOST_BINARY ${APP_NAME})
+ 
+ # Host/CA source files
+-set(HOST_SRC host.c)
++# set(HOST_SRC host.c)
++set(HOST_SRC host_gicp.c)
+ add_executable(${HOST_BINARY} ${HOST_SRC})
+ 
+ target_link_libraries(${HOST_BINARY}

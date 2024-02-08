@@ -1,0 +1,55 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ea4b56b..edc1b8b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.10)
+ include($ENV{KEYSTONE_SDK_DIR}/cmake/macros.cmake)
+ 
+ # Set Application Name
+-set(APP_NAME "template")
++# set(APP_NAME "template")
++set(APP_NAME "gdemos")
+ 
+ # This determines the size of the untrusted uffer (UTM)
+ # that is shared between the CA and the TA
+@@ -22,7 +23,8 @@ set(TEEC_CONFIG_SHAREDMEM_MAX_SIZE "(4*1024)")
+ # This definition is used by both: host and enclave build setups
+ # (C math expressions are allowed)
+ # default: 160kB
+-set(TA_HEAP_SIZE "4*${TEEC_CONFIG_SHAREDMEM_MAX_SIZE} * 10")
++# set(TA_HEAP_SIZE "4*${TEEC_CONFIG_SHAREDMEM_MAX_SIZE} * 10")
++set(TA_HEAP_SIZE "5 * 256 * 1024")
+ # set(TA_HEAP_SIZE "4 * (1024 * 1024)") # max
+ # Minimum for xtest: TA_HEAP_SIZE = 8kB
+ 
+@@ -79,6 +81,8 @@ set(KEYSTONE_LIB_EDGE ${KEYSTONE_SDK_DIR}/lib/libkeystone-edge.a)
+ set(KEYSTONE_LIB_VERIFIER ${KEYSTONE_SDK_DIR}/lib/libkeystone-verifier.a)
+ set(KEYSTONE_LIB_EAPP ${KEYSTONE_SDK_DIR}/lib/libkeystone-eapp.a)
+ 
++include(${CMAKE_SOURCE_DIR}/groupsig.cmake)
++
+ # enclave
+ add_subdirectory(enclave)
+ 
+@@ -133,6 +137,8 @@ add_custom_target(overlay
+   COMMENT "Copying package ${package_name} and TA to rootfs"
+   COMMAND mkdir -p ${KEYSTONE_BUILD_DIR}/overlay/${FS_TA_DIR_PATH}
+   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/enclave/${TA_BINARY} ${KEYSTONE_BUILD_DIR}/overlay/${FS_TA_DIR_PATH}
++  COMMENT "Copying demo files"
++  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/host/gicp_api ${KEYSTONE_BUILD_DIR}/overlay/root/gicp_api
+   VERBATIM
+ )
+ 
+@@ -152,6 +158,12 @@ add_custom_target(qemu
+   VERBATIM
+ )
+ 
++add_custom_target(debug
++  COMMAND ${CMAKE_COMMAND} -E chdir . ${KEYSTONE_BUILD_DIR}/scripts/run-qemu.sh -debug
++  COMMENT "Running QEMU (debug)..."
++  VERBATIM
++)
++
+ add_custom_target(test
+   COMMAND ${CMAKE_COMMAND} -E chdir . ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test.sh ${package_name}
+   COMMENT "Running test"

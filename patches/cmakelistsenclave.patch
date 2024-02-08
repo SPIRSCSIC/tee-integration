@@ -1,0 +1,37 @@
+diff --git a/enclave/CMakeLists.txt b/enclave/CMakeLists.txt
+index a37777b..2023186 100644
+--- a/enclave/CMakeLists.txt
++++ b/enclave/CMakeLists.txt
+@@ -2,7 +2,8 @@ include(../macros.cmake)
+ 
+ # Set TA UUID:
+ # eg. e626662e-c0e2-485c-b8c8-09fbce6edf3d
+-set(TA_UUID "1fffffff-1fff-1fff-ffff-1fffffffffff")
++# set(TA_UUID "1fffffff-1fff-1fff-ffff-1fffffffffff")
++set(TA_UUID "4a4f7741-cb9f-4cfc-914f-81beb2060a66")
+ 
+ if (NOT DEFINED TA_UUID)
+   message(FATAL_ERROR "Please set TA_UUID variable")
+@@ -14,10 +15,21 @@ set(TA_UUID ${TA_UUID} PARENT_SCOPE)
+ set(TA_BINARY ${TA_UUID}.ta)
+ 
+ # Enclave source files
+-set(TA_SRC tee_internal_api/src/main.c tee_internal_api/src/tee_random.c ta_callbacks.c)
++# set(TA_SRC tee_internal_api/src/main.c tee_internal_api/src/tee_random.c ta_callbacks.c)
++set(TA_SRC
++  gicp/mondrian.c
++  gicp/base64.c
++  gicp/toolbox.c
++  gicp/pairing.cpp
++  tee_internal_api/src/main.c
++  tee_internal_api/src/tee_random.c
++  ta_callbacks_gicp.c
++)
+ 
+ add_executable(${TA_BINARY} ${TA_SRC})
+ 
++include(${CMAKE_SOURCE_DIR}/groupsig_import.cmake)
++
+ # for now we have to include our "tee_internal_api" folder
+ # our internal API requires client API types
+ include_directories(include
