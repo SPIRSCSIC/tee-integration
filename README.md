@@ -16,6 +16,7 @@ Patch CMakeLists.txt files from the sdk to include our changes
 patch -u spirs_tee_sdk/enclave/CMakeLists.txt -i patches/cmakelistsenclave.patch
 patch -u spirs_tee_sdk/host/CMakeLists.txt -i patches/cmakelistshost.patch
 patch -u spirs_tee_sdk/CMakeLists.txt -i patches/cmakelists.patch
+patch -u spirs_tee_sdk/docker/Dockerfile -i patches/dockerfile.patch
 ```
 
 Copy the files with the instructions on how to compile our project:

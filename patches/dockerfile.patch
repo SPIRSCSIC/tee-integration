@@ -1,0 +1,37 @@
+diff --git a/docker/Dockerfile b/docker/Dockerfile
+index 3867beb..f49c6e7 100644
+--- a/docker/Dockerfile
++++ b/docker/Dockerfile
+@@ -1,9 +1,10 @@
+-FROM ubuntu:20.04
++FROM ubuntu:22.04
+ 
+ ARG URL="https://gitlab.com/spirs_eu"
+ ARG CHECKOUT="spirs"
+ ARG KEYSTONE_BUILD_FLAGS="-DSM_PLATFORM=spirs"
+ 
++ENV KEYSTONE_BUILD_DIR="/keystone/build"
+ ENV KEYSTONE_SDK_DIR="/keystone/sdk/build64"
+ ENV RISCV="/keystone/riscv64"
+ ENV RISCV_MUSL="/opt/spirs/riscv64-musl/riscv-musl"
+@@ -16,11 +17,11 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+          autoconf automake autotools-dev bc \
+          bison build-essential curl expat libexpat1-dev flex gawk gcc git \
+          gperf libgmp-dev libmpc-dev libmpfr-dev libtool texinfo tmux \
+-         patchutils zlib1g-dev wget bzip2 patch vim-common lbzip2 python \
++         patchutils zlib1g-dev wget bzip2 patch vim-common lbzip2 python3 \
+          pkg-config libglib2.0-dev libpixman-1-dev libssl-dev screen \
+          device-tree-compiler expect makeself unzip cpio rsync cmake p7zip-full \
+          libcap-ng-dev libattr1-dev \
+-         libpython2.7-dev vim-nox wget openssh-client \
++         libpython3-dev vim-nox wget openssh-client \
+ 	     quilt ninja-build slirp libslirp-dev \
+          locales locales-all \
+      && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+@@ -56,5 +57,6 @@ VOLUME /keystone
+ 
+ VOLUME /keystone
+ VOLUME /spirs_tee_sdk
++ENV SPIRS_SDK_DIR=/spirs_tee_sdk
+ 
+ ENTRYPOINT /bin/bash
