@@ -96,17 +96,22 @@ Patch the buildroot configuration file to install flask, and the run-qemu script
 
 ```bash
 docker cp spirs:/keystone/build/buildroot.build/.config .
-docker cp spirs:/keystone/scripts/run-qemu.sh.in .
 patch -u .config -i patches/flaskinstall.patch
-patch -u run-qemu.sh.in -i patches/flaskport.patch
 docker cp .config spirs:/keystone/build/buildroot.build/
+
+docker cp spirs:/keystone/conf/riscv64_cva6_spirs_defconfig .
+patch -u riscv64_cva6_spirs_defconfig -i patches/flaskdefconfig.patch
+docker cp riscv64_cva6_spirs_defconfig spirs:/keystone/conf/
+
+docker cp spirs:/keystone/scripts/run-qemu.sh.in .
+patch -u run-qemu.sh.in -i patches/flaskport.patch
 docker cp run-qemu.sh.in spirs:/keystone/scripts/
 ```
 
 Compile buildroot with new changes
 
 ```bash
-docker exec spirs make -C build/buildroot.build
+docker exec spirs make -C build/buildroot.build python3-dirclean all
 ```
 
 Connect to container and compile the project
