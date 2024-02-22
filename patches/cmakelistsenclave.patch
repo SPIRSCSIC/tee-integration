@@ -1,5 +1,5 @@
 diff --git a/enclave/CMakeLists.txt b/enclave/CMakeLists.txt
-index a37777b..2023186 100644
+index a37777b..3e67519 100644
 --- a/enclave/CMakeLists.txt
 +++ b/enclave/CMakeLists.txt
 @@ -2,7 +2,8 @@ include(../macros.cmake)
@@ -12,7 +12,7 @@ index a37777b..2023186 100644
  
  if (NOT DEFINED TA_UUID)
    message(FATAL_ERROR "Please set TA_UUID variable")
-@@ -14,10 +15,21 @@ set(TA_UUID ${TA_UUID} PARENT_SCOPE)
+@@ -14,10 +15,20 @@ set(TA_UUID ${TA_UUID} PARENT_SCOPE)
  set(TA_BINARY ${TA_UUID}.ta)
  
  # Enclave source files
@@ -20,7 +20,6 @@ index a37777b..2023186 100644
 +# set(TA_SRC tee_internal_api/src/main.c tee_internal_api/src/tee_random.c ta_callbacks.c)
 +set(TA_SRC
 +  gicp/mondrian.c
-+  gicp/base64.c
 +  gicp/toolbox.c
 +  gicp/pairing.cpp
 +  tee_internal_api/src/main.c

@@ -6,28 +6,21 @@ import ssl
 import tempfile
 from pathlib import Path
 from uuid import uuid4
+import subprocess
+import argparse
+import re
 
 from flask import Flask, jsonify, request
 from werkzeug.serving import WSGIRequestHandler
 
 
 A_SCHEMES = ["mondrian"]
-BASE = "./tee_demos.ke toolbox"
-CMDS = {
-    "anon": (
-        f"{BASE} "
-        "--mondrian --anonymize --input {inp} "
-        "--k {k} --output {out}"
-    ),
-    "key": f"{BASE} --groupsig",
-    "join": (
-        f"{BASE} --groupsig"
-        "--scheme {scheme} -j {phase} --message {msg}"
-    ),
-    "rev": (f"{BASE} " "--revoke {sig}"),
-    "revd": (f"{BASE} " "--revoked {sig}"),
-}
+GS_SCHEMES = ["ps16", "kty04", "gl19"]
+BS = ["./gdemos.ke", "toolbox"]
+OK = re.compile(rb"Package\n(.*)", re.S)
+ERR = re.compile(rb"(.*?)\[host\]", re.S)
 TOKENS = {}
+GRPKEY = None
 
 app = Flask(__name__)
 
@@ -39,7 +32,7 @@ def temp_w(data):
         f.seek(0)
         return f
     except Exception as e:
-        print(f"Error creating mode:w tempfile: {str(e)}")
+        logging.error(f"Creating mode:w tempfile: {str(e)}")
 
 
 def temp():
@@ -47,17 +40,25 @@ def temp():
         f = tempfile.NamedTemporaryFile(mode="r")
         return f
     except Exception as e:
-        print(f"Error creating mode:r tempfile: {str(e)}")
+        logging.error(f"Creating mode:r tempfile: {str(e)}")
 
 
-def debug(cmd, msg):
-    logging.debug(cmd)
+def run(cmd, text):
+    logging.info(" ".join(cmd))
+    logging.info(text)
+    out = subprocess.run(cmd, capture_output=True)
+    logging.info(f"stdout: {out.stdout}\n\nstderr: {out.stderr}")
+    if out.stderr:
+        msg = ERR.search(out.stderr).group(1)
+    else:
+        msg = OK.search(out.stdout).group(1)
+    msg = msg.decode().strip()
     logging.info(msg)
-    return cmd
+    return msg
 
 
 def save_tokens():
-    with open("tokens.json") as f:
+    with open("tokens.json", "w") as f:
         json.dump(TOKENS, f)
 
 
@@ -65,15 +66,6 @@ def status(sts, msg):
     if sts == "error":
         logging.error(msg)
     return jsonify({"status": sts, "msg": msg})
-
-
-def clean_out(output):
-    return output.replace(
-        "Verifying archive integrity... "
-        "All good.\nUncompressing Keystone "
-        "Enclave Package\n",
-        "",
-    )
 
 
 def tokens():
@@ -85,8 +77,7 @@ class PeerCertWSGIRequestHandler(WSGIRequestHandler):
         environ = super().make_environ()
         cert = self.connection.getpeercert()
         environ["CERT_HASH"] = hashlib.sha256(
-            cert.encode()
-        ).hexdigest()
+            str(cert).encode()).hexdigest()
         return environ
 
 
@@ -108,13 +99,19 @@ def anonymization_anonymize(scheme):
     k = request.form.get("k")
     k = 10 if k is None else k
     file_out = temp()
-    cmd = debug(
-        CMDS["anon"].format(
-            input=file_inp.name, k=k, output=file_out.name
-        ),
+    output = run(
+        BS + [
+            "--mondrian",
+            "--anonymize",
+            "--input",
+            f"{file_inp.name}",
+            "--k",
+            f"{k}",
+            "--output",
+            f"{file_out.name}",
+        ],
         "Anonymizing dataset",
     )
-    output = clean_out(os.popen(cmd).read())
     csv_data = []
     csv_reader = csv.DictReader(file_out)
     for row in csv_reader:
@@ -124,9 +121,11 @@ def anonymization_anonymize(scheme):
 
 @app.get("/groupsig")
 def groupsig_key():
-    cmd = debug(CMDS["key"], "Retrieving grpkey")
-    output = clean_out(os.popen(cmd).read())
-    return status("success", output)
+    global GRPKEY
+    if GRPKEY is None:
+        output = run(BS + ["--groupsig"], "Retrieving grpkey")
+        GRPKEY = output
+    return status("success", GRPKEY)
 
 
 @app.get("/groupsig/schemes")
@@ -134,70 +133,123 @@ def groupsig_schemes():
     return status("success", GS_SCHEMES)
 
 
-@app.get("/groupsig/join")
-def groupsig_token():
+@app.post("/groupsig/join")
+def groupsig_join():
     crt_hash = request.environ.get("CERT_HASH")
-    if crt_hash is not None:
-        if crt_hash not in TOKENS:
-            TOKENS[crt_hash] = [str(uuid4()), False]
-            save_tokens()
-        if TOKENS[crt_hash][1]:
-            return status("error", "Already registered")
-        else:
-            return status("success", TOKENS[crt_hash][0])
+    if crt_hash not in TOKENS:
+        TOKENS[crt_hash] = False
+        save_tokens()
+    if TOKENS[crt_hash]:
+        return status("error", "Already registered")
     else:
-        return status(
-            "error", "Could not retrieve client certificate"
-        )
-
-
-@app.post("/groupsig/join/<string:token>")
-def groupsig_join(token):
-    if token in tokens():
-        scheme = request.form.get("scheme")
-        if not scheme:
-            return status("error", "Missing 'scheme' in body")
         phase = request.form.get("phase")
         if not phase:
             return status("error", "Missing 'phase' in body")
-        message = request.form.get("message")
-        if not message:
-            return status("error", "Missing 'message' in body")
-        file_msg = ut.temp_w(message)
-        cmd = debug(
-            CMDS["join"].format(
-                scheme=scheme, phase=phase, message=file_msg.name
-            ),
-            f"Join phase {phase} ({scheme})",
+        if int(phase):
+            message = request.form.get("message")
+            if not message:
+                return status("error", "Missing 'message' in body")
+            file_msg = temp_w(message)
+        else:
+            file_msg = temp()
+        output = run(
+            BS + [
+                "--groupsig",
+                "--join",
+                f"{phase}",
+                "--message",
+                f"{file_msg.name}"
+            ],
+            f"Join phase {phase}",
         )
-        output = clean_out(os.popen(cmd).read())
-        print(output)
-        return status("error", output)
-    else:
-        return status("error", "Invalid token")
+        if not output:
+            msg = file_msg.read()
+            if isinstance(msg, (bytes, bytearray)):
+                msg = msg.decode()
+            if int(phase) in [1, 2]:
+                TOKENS[crt_hash] = True
+                save_tokens()
+        else:
+            msg = output
+        return status("success", msg)
 
 
 @app.post("/groupsig/revoke")
-def groupsig_revoke(group):
-    if group is None or not group:
-        return status("error", "Missing 'group' in parameter")
+def groupsig_revoke():
     signature = request.form.get("signature")
     if not signature:
         return status("error", "Missing 'signature' in body")
-    file_sig = ut.temp_w(signature)
-    cmd = ut.CMD_REVOKE.format(signature=file_sig.name)
-    logging.debug(cmd)
-    logging.info("Revoking identity")
-    output = clean_out(os.popen(cmd).read())
-    status = Path(ut.FILE["status"])
-    if status.is_file():
-        with status.open() as f:
-            result = f.read()
-        if result == "1":
-            return status("success", "Identity revoked")
-        else:
-            return status("success", "Identity could not be revoked")
-    return status("error", output)
+    file_sig = temp_w(signature)
+    output = run(
+        BS + ["--groupsig",
+              "--revoke",
+              f"{file_sig.name}"],
+        "Revoking identity",
+    )
+    if output == "1":
+        return status("success", "Identity revoked")
+    else:
+        return status("success", "Identity could not be revoked")
+
+
+@app.post("/groupsig/revoked")
+def groupsig_revoked():
+    signature = request.form.get("signature")
+    if not signature:
+        return status("error", "Missing 'signature' in body")
+    file_sig = temp_w(signature)
+    output = run(
+        BS + ["--groupsig",
+              "--revoked",
+              f"{file_sig.name}"],
+        "Checking signature status",
+    )
+    if output == "1":
+        return status("success", "Identity revoked")
+    else:
+        return status("success", "Identity not revoked")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="GroupSig API")
+    parser.add_argument(
+        "--host", "-H",
+        metavar="HOST",
+        default="0.0.0.0",
+        help="Host to listen on"
+    )
+    parser.add_argument(
+        "--port", "-P",
+        metavar="PORT",
+        type=int,
+        default=5000,
+        help="Port to listen on",
+    )
+    parser.add_argument(
+        "--cert", "-C",
+        metavar="CERT",
+        default="gicp_api/crypto/gms/user1.crt",
+        help="Server certificate"
+    )
+    parser.add_argument(
+        "--key", "-K",
+        metavar="KEY",
+        default="gicp_api/crypto/gms/user1.key",
+        help="Server certificate key"
+    )
+    parser.add_argument(
+        "--chain", "-c",
+        metavar="CHAIN",
+        default="gicp_api/crypto/auditors/ca.crt",
+        help="Certificate chain to validate clients"
+    )
+    parser.add_argument(
+        "--tokens", "-t",
+        metavar="TOKEN",
+        default="gicp_api/tokens.json",
+        help="Tokens file"
+    )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
@@ -205,18 +257,17 @@ if __name__ == "__main__":
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
     )
-    tokens = Path("tokens.json")
-    if tokens.is_file():
-        with tokens.open() as f:
+    args = parse_args()
+    tokens_f = Path("tokens.json")
+    if tokens_f.is_file():
+        with tokens_f.open() as f:
             TOKENS = json.load(f)
     context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     context.verify_mode = ssl.CERT_REQUIRED
-    context.load_cert_chain(
-        certfile="server.crt", keyfile="server.key"
-    )
-    context.load_verify_locations(cafile="ca/ca.crt")
+    context.load_cert_chain(certfile=args.cert, keyfile=args.key)
+    context.load_verify_locations(args.chain)
     app.run(
-        host="0.0.0.0",
-        ssl_context=("cert.crt", "cert.key"),
+        host=args.host,
+        ssl_context=context,
         request_handler=PeerCertWSGIRequestHandler,
     )

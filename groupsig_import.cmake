@@ -28,3 +28,5 @@ target_link_libraries(${TA_BINARY}
   crypto
   mondrianl
 )
+
+include_directories("${PROJECT_SOURCE_DIR}/modules/libgroupsig/src")

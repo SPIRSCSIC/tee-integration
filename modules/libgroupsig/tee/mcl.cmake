@@ -6,16 +6,16 @@ use_riscv_musl_toolchain(64)
 
 set(EXTERNAL_INSTALL_LOCATION ${CMAKE_BINARY_DIR}/external)
 set(MCL_CONF_ENV
-    CC=${CC}
-    CXX=${CXX}
-    LD=${LD}
-    AR=${AR}
-    OBJCOPY=${OBJCOPY}
-    OBJDUMP=${OBJDUMP}
-    ARCH=linux64-riscv64
-    MCL_BINT_ASM=0
-    MCL_USE_LLVM=0
-  )
+  CC=${CC}
+  CXX=${CXX}
+  LD=${LD}
+  AR=${AR}
+  OBJCOPY=${OBJCOPY}
+  OBJDUMP=${OBJDUMP}
+  ARCH=linux64-riscv64
+  MCL_BINT_ASM=0
+  MCL_USE_LLVM=0
+)
 
 ExternalProject_Add(mclproject
   URL https://github.com/herumi/mcl/archive/refs/tags/v1.84.0.tar.gz

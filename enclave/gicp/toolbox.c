@@ -5,21 +5,23 @@
 #include <string.h>
 #include <getopt.h>
 #include <errno.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <openssl/rand.h>
 
 #include "groupsig.h"
 #include "kty04.h"
 #include "ps16.h"
 #include "common.h"
 #include "mondrian.h"
-#include "base64.h"
+#include "shim/base64.h"
 
-
-char *GRPKEY = "/root/groupsig/grpkey";
-char *MGRKEY = "/root/groupsig/mgrkey";
-char *MEMKEY = "/root/groupsig/memkey";
-char *GML = "/root/groupsig/gml";
-char *CRL = "/root/groupsig/crl";
-
+char *DIRE = "/root/groupsig";
+char *AFFIX = "";
+char GRPKEY[1024];
+char MGRKEY[1024];
+char GML[1024];
+char CRL[1024];
 char *SIG_PATH = NULL;
 char *MSG_PATH = NULL;
 char *SCHEME = NULL;
@@ -28,7 +30,6 @@ int CODE = -1;
 int REV = 0;
 int REVD = 0;
 int JOIN = 0;
-
 static int groupsig_flag;
 static int mondrian_flag;
 static int anonymize_flag;
@@ -93,6 +94,12 @@ int valid_schemes() {
   return 1;
 }
 
+int crl_schemes() {
+  if (CODE == GROUPSIG_KTY04_CODE)/* || CODE == GROUPSIG_CPY06_CODE)*/
+    return 1;
+  return 0;
+}
+
 void code_from_scheme() {
   if (!strcmp(SCHEME, "ps16"))
     CODE = GROUPSIG_PS16_CODE;
@@ -102,14 +109,21 @@ void code_from_scheme() {
     CODE = GROUPSIG_KTY04_CODE;
 }
 
-int init_schemes() {
-  if (!strcmp(SCHEME, "ps16") || !strcmp(SCHEME, "gl19"))
-    return 1;
-  return 0;
+void scheme_from_code() {
+  if (CODE == GROUPSIG_PS16_CODE) {
+    SCHEME = "ps16";
+  } else if (CODE == GROUPSIG_GL19_CODE) {
+    SCHEME = "gl19";
+  } else if (CODE == GROUPSIG_KTY04_CODE) {
+    SCHEME = "kty04";
+  } else {
+    fprintf(stderr, "Error: Could not detect scheme from code\n");
+    exit(1);
+  }
 }
 
-int crl_schemes() {
-  if (!strcmp(SCHEME, "kty04")/* || !strcmp(SCHEME, "cpy06")*/)
+int init_schemes() {
+  if (!crl_schemes())
     return 1;
   return 0;
 }
@@ -121,11 +135,12 @@ int twophase_schemes() {
   return 0;
 }
 
+
 void print_data(void *data, int type) {
   char *msg1 = "grpkey_print";
   char *msg2 = "grpkey";
   int (*get_size)(groupsig_key_t *) = &groupsig_grp_key_get_size;
-  int (*export)(byte_t **, uint32_t *, groupsig_key_t *) = groupsig_grp_key_export;
+  int (*export)(byte_t **, uint32_t *, groupsig_key_t *) = &groupsig_grp_key_export;
   if (type == 2) {
     msg1 = "memkey_print";
     msg2 = "memkey";
@@ -139,7 +154,7 @@ void print_data(void *data, int type) {
   rc = (*export)(&bytes, &size, data);
   check_rc(rc, msg1);
   check_size(size, len, msg2);
-  char *enc = malloc(Base64encode_len(size));
+  char *enc = base64_encode(bytes, size, 0);
   printf("%s\n", enc);
   free(enc);
 }
@@ -148,7 +163,7 @@ void save_data(void *data, int type) {
   char *msg1 = "grpkey_export";
   char *msg2 = "grpkey";
   int (*get_size)(groupsig_key_t *) = &groupsig_grp_key_get_size;
-  int (*export)(byte_t **, uint32_t *, groupsig_key_t *) = groupsig_grp_key_export;
+  int (*export)(byte_t **, uint32_t *, groupsig_key_t *) = &groupsig_grp_key_export;
   char *file = GRPKEY;
   if (type == 1) {
     msg1 = "mgrkey_export";
@@ -172,11 +187,10 @@ void save_data(void *data, int type) {
   check_rc(rc, msg1);
   if (type != 3)
     check_size(size, len, msg2);
-  char *enc = malloc(Base64encode_len(size));
-  int enc_len = Base64encode(enc, (char *)bytes, size);
+  char *enc = base64_encode(bytes, size, 0);
   FILE *fp = fopen(file, "w");
   if (fp != NULL) {
-    fwrite(enc, sizeof(char), enc_len, fp);
+    fwrite(enc, sizeof(char), strlen(enc), fp);
     fclose(fp);
   } else {
     fprintf(stderr, "Error: File %s cannot be written\n", file);
@@ -204,7 +218,7 @@ void load_message(message_t **msg) {
 
 void load_data(void **data, int type) {
   char *msg1 = "grpkey_import";
-   groupsig_key_t *(*import)(unsigned char, unsigned char *, unsigned int) = groupsig_grp_key_import;
+  groupsig_key_t *(*import)(unsigned char, unsigned char *, unsigned int) = &groupsig_grp_key_import;
   char *file = GRPKEY;
   if (type == 1) {
     msg1 = "mgrkey_import";
@@ -232,21 +246,26 @@ void load_data(void **data, int type) {
     fprintf(stderr, "Error: %s file cannot be read\n", file);
     exit(1);
   }
-  char *dec_buff = malloc(Base64decode_len(enc));
-  int dec_len = Base64decode(dec_buff, enc);
-  *data = (*import)(CODE, (unsigned char*) dec_buff, dec_len);
-  check_ptr(data, msg1);
+  uint64_t dec_len;
+  byte_t *dec_buff = base64_decode(enc, &dec_len);
+  if (CODE == -1) {
+    CODE = dec_buff[0];
+    scheme_from_code();
+    if (init_schemes()) {
+      int rc = 255;
+      rc = groupsig_init(CODE, time(NULL));
+      check_rc(rc, "init");
+    }
+  }
+  if (type == 3 && !strlen(dec_buff)) {
+    *data = gml_init(CODE);
+  } else {
+    *data = (*import)(CODE, (unsigned char*) dec_buff, dec_len);
+    check_ptr(data, msg1);
+  }
   free(dec_buff);
 }
 
-void load_credentials(groupsig_key_t **grpkey, groupsig_key_t **mgrkey,
-                      gml_t **gml, crl_t **crl) {
-  load_data(grpkey, 0);
-  load_data(mgrkey, 1);
-  load_data(gml, 3);
-  if (strcmp(SCHEME, "ps16"))
-    *crl = crl_import(CODE, CRL_FILE, CRL);
-}
 
 void join(message_t *msg,
           groupsig_key_t *grpkey, groupsig_key_t *mgrkey,
@@ -324,28 +343,27 @@ void groupsig_mode() {
     fprintf(stderr, "Error: join, revoke or revoked are mutually exclusive\n");
     exit(1);
   }
-  if (!SCHEME) {
-    fprintf(stderr, "Error: scheme missing, allowed values are ps16, gl19 and kty04\n");
-    exit(1);
-  } else if (!valid_schemes()) {
-    fprintf(stderr, "Error: invalid scheme, allowed values are ps16, gl19 and kty04\n");
-    exit(1);
-  } else {
-    code_from_scheme();
-    if (init_schemes()) {
-      int rc = 255;
-      rc = groupsig_init(CODE, time(NULL));
-      check_rc(rc, "init");
-    }
-  }
   setup_seed();
   groupsig_key_t *grpkey;
   groupsig_key_t *mgrkey;
   gml_t *gml;
   crl_t *crl;
   if (!file_readable(GRPKEY) || !file_readable(MGRKEY)
-      || !file_readable(GML) ||
-      (crl_schemes() && !file_readable(CRL))) {
+      || !file_readable(GML)) {
+    if (!SCHEME) {
+      fprintf(stderr, "Error: scheme missing, allowed values are ps16, gl19 and kty04\n");
+      exit(1);
+    } else if (!valid_schemes()) {
+      fprintf(stderr, "Error: invalid scheme, allowed values are ps16, gl19 and kty04\n");
+      exit(1);
+    } else {
+      code_from_scheme();
+      if (init_schemes()) {
+        int rc = 255;
+        rc = groupsig_init(CODE, time(NULL));
+        check_rc(rc, "init");
+      }
+    }
     grpkey = groupsig_grp_key_init(CODE);
     check_ptr(grpkey, "grpkey");
     mgrkey = groupsig_mgr_key_init(CODE);
@@ -367,7 +385,11 @@ void groupsig_mode() {
       check_rc(rc, "crl");
     }
   } else {
-    load_credentials(&grpkey, &mgrkey, &gml, &crl);
+    load_data(&grpkey, 0);
+    load_data(&mgrkey, 1);
+    load_data(&gml, 3);
+    if (crl_schemes())
+      crl = crl_import(CODE, CRL_FILE, CRL);
     if (!grpkey || !mgrkey || !gml){
       fprintf(stderr, "Error: importing groupsig material, does scheme match?\n");
       exit(1);
@@ -381,8 +403,13 @@ void groupsig_mode() {
       exit(1);
     }
     message_t *msg;
-    load_message(&msg);
+    if (!PHASE) {
+      msg = message_init();
+    } else {
+      load_message(&msg);
+    }
     join(msg, grpkey, mgrkey, gml);
+    message_free(msg); msg = NULL;
   } else if (REV) {
     if (!crl_schemes()) {
       fprintf(stderr, "Error: %s scheme does not support revoke\n", SCHEME);
@@ -445,7 +472,9 @@ void usage(int error) {
           "\t--revoke|-r SIG\t\t Signature file path to be revoked\n"
           "\t--revoked|-r SIG\t\t Signature file path to check revoke status\n"
           "\t--join|-j PHASE\t\t Join phase to execute\n"
-          "\t--message|-m MSG\t Message file path\n\n"
+          "\t--message|-m MSG\t Message file path\n"
+          "\t--directory|-m DIR\t\t Group signature crypto material path. Must exist.\n\n"
+          "\t--affix|-m AFX\t\t Affix to add at the end of each crypto material file\n\n"
           "Mondrian flags:\n"
           "\t--anonymize\t\t If present, anonymize output attributes\n"
           "\t--relaxed\t\t If present, run on relaxed mode instead of strict\n"
@@ -470,6 +499,8 @@ int toolbox_main(int argc, char** argv) {
     {"revoked", required_argument, 0, 'v'},
     {"join", required_argument, 0, 'j'},
     {"message", required_argument, 0, 'm'},
+    {"directory", required_argument, 0, 'd'},
+    {"affix", required_argument, 0, 'a'},
     /* Mondrian flags */
     {"anonymize", no_argument, &anonymize_flag, 1},
     {"relaxed", no_argument, &relaxed_flag, 1},
@@ -484,7 +515,7 @@ int toolbox_main(int argc, char** argv) {
     {0, 0, 0, 0}
   };
 
-  while ((opt = getopt_long(argc, argv, "s:r:v:j:m:i:k:o:h",
+  while ((opt = getopt_long(argc, argv, "s:r:v:j:m:d:a:i:k:o:h",
                             long_options, &opt_idx)) != -1) {
     switch (opt) {
     case 0:
@@ -510,6 +541,12 @@ int toolbox_main(int argc, char** argv) {
     case 'm':
       MSG_PATH = optarg;
       break;
+    case 'd':
+      DIRE = optarg;
+      break;
+    case 'a':
+      AFFIX = optarg;
+      break;
     case 'i':
       DATASET = optarg;
       break;
@@ -529,7 +566,10 @@ int toolbox_main(int argc, char** argv) {
       usage(1);
     }
   }
-
+  sprintf(GRPKEY, "%s/grpkey%s", DIRE, AFFIX);
+  sprintf(MGRKEY, "%s/mgrkey%s", DIRE, AFFIX);
+  sprintf(GML, "%s/gml%s", DIRE, AFFIX);
+  sprintf(CRL, "%s/crl%s", DIRE, AFFIX);
   if (groupsig_flag && mondrian_flag) {
     fprintf(stderr, "Error: groupsig and mondrian are mutually exclusive\n");
     exit(1);

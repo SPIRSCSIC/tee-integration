@@ -214,21 +214,15 @@ static void benchmark_ps16() {
 }
 
 int arguments(char** out_b, int in_n, char** in_b) {
-  int len = 0;
-  int skip = 2; // we skip name and function in the list of arguments
-  len += strlen(in_b[0]); // we need to imitate argv so we keep program name
-  for (int i = skip; i < in_n; i++) {
-    len += strlen(in_b[i]);
-  }
-  len += in_n - 1; // add space for N separators
-  len -= 1; // remove one separator reserved for function
-  *out_b = (char*) malloc(len + 1);  // extra space for \0
-  strcpy(*out_b, in_b[0]);  // add program name
-  for (int i = skip; i < in_n; i++) {
+  int len = strlen(in_b[0]) + 1;
+  *out_b = (char *) malloc(len);
+  strcat(*out_b, in_b[0]);
+  for (int i = 2; i < in_n; i++) { // skip "./prog" and "toolbox"
+    len += 1 + strlen(in_b[i]); // separator + argument
+    *out_b = (char *) realloc(*out_b, len);
     strcat(*out_b, "|");
     strcat(*out_b, in_b[i]);
   }
-  (*out_b)[len] = '\0';
   return len;
 }
 

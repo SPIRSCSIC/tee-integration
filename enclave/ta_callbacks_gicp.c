@@ -14,7 +14,6 @@
 #include "gl19.h"
 #include "common.h"
 #include "mondrian.h"
-#include "gicp/base64.h"
 
 // Only required header for using SPIRS GlobalPlatform TEE Internal API
 #include <tee_ta_api_gicp.h>
@@ -108,17 +107,14 @@ TEE_Result toolbox(uint32_t param_types,
   while (token != NULL) {
     char* arg = (char*) malloc(strlen(token) + 1); // extra space for \0
     strcpy(arg, token);
-    argc++;
-    argv = (char**)realloc(argv, sizeof(char*) * argc);
+    argv = (char**)realloc(argv, sizeof(char*) * ++argc);
     argv[argc - 1] = arg;
     token = strtok(NULL, "|");
   }
   toolbox_main(argc, argv); // defined in tests/toolbox.c
-  // Free each string in the argv array
   for (int i = 0; i < argc; i++) {
     free(argv[i]);
   }
-  // Free the argv array itself
   free(argv);
   return TEE_SUCCESS;
 }

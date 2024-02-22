@@ -56,6 +56,7 @@ patch -u spirs_tee_sdk/enclave/CMakeLists.txt -i patches/cmakelistsenclave.patch
 patch -u spirs_tee_sdk/host/CMakeLists.txt -i patches/cmakelistshost.patch
 patch -u spirs_tee_sdk/CMakeLists.txt -i patches/cmakelists.patch
 patch -u spirs_tee_sdk/docker/Dockerfile -i patches/dockerfile.patch
+patch -u spirs_tee_sdk/modules/libgroupsig/src/wrappers/python/pygroupsig/libgroupsig_build.py -i patches/pygroupsig.patch
 ```
 
 Copy the required files to compile our project
@@ -119,5 +120,9 @@ Connect to container and compile the project
 ```bash
 docker exec -it spirs bash
 cd /spirs_tee_sdk
-cmake -B build && make -C build && make -C build -j image && make -C build -j qemu
+cmake -B build && make -C build
+cmake -B build/libgroupsig modules/libgroupsig && make -C build/libgroupsig # Needed to test libgroupsig client
+apt update && apt install -y python3-pip && python3 -m pip install path requests
+cd modules/libgroupsig/src/wrappers/python/ && python3 setup.py bdist_wheel && pip install dist/pygroupsig-1.1.0-cp310-cp310-linux_x86_64.whl
+make -C build -j image && make -C build -j qemu
 ```
