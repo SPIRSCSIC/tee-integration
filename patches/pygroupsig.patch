@@ -1,8 +1,8 @@
 diff --git a/src/wrappers/python/pygroupsig/libgroupsig_build.py b/src/wrappers/python/pygroupsig/libgroupsig_build.py
-index c46f859..7d0a8ef 100644
+index d4f540f..f0a2533 100644
 --- a/src/wrappers/python/pygroupsig/libgroupsig_build.py
 +++ b/src/wrappers/python/pygroupsig/libgroupsig_build.py
-@@ -105,38 +105,40 @@ ffibuilder.cdef(groupsigcdef)
+@@ -180,29 +180,29 @@ ffibuilder.cdef(groupsigcdef)
  
  c_header_file = path.Path("../../../src/include/groupsig.h").abspath()
  c_include_path = path.Path("../../../src/include").abspath()
@@ -12,6 +12,7 @@ index c46f859..7d0a8ef 100644
 -c_ps16_path =  path.Path("../../../build/lib/libps16.a").abspath()
 -c_klap20_path =  path.Path("../../../build/lib/libklap20.a").abspath()
 -c_kty04_path =  path.Path("../../../build/lib/libkty04.a").abspath()
+-c_cpy06_path =  path.Path("../../../build/lib/libcpy06.a").abspath()
 -c_dl21_path =  path.Path("../../../build/lib/libdl21.a").abspath()
 -c_dl21seq_path =  path.Path("../../../build/lib/libdl21seq.a").abspath()
 -c_logger_path =  path.Path("../../../build/lib/liblogger.a").abspath()
@@ -34,6 +35,7 @@ index c46f859..7d0a8ef 100644
 +c_ps16_path =  path.Path("/spirs_tee_sdk/build/libgroupsig/lib/libps16.a").abspath()
 +c_klap20_path =  path.Path("/spirs_tee_sdk/build/libgroupsig/lib/libklap20.a").abspath()
 +c_kty04_path =  path.Path("/spirs_tee_sdk/build/libgroupsig/lib/libkty04.a").abspath()
++c_cpy06_path =  path.Path("/spirs_tee_sdk/build/libgroupsig/lib/libcpy06.a").abspath()
 +c_dl21_path =  path.Path("/spirs_tee_sdk/build/libgroupsig/lib/libdl21.a").abspath()
 +c_dl21seq_path =  path.Path("/spirs_tee_sdk/build/libgroupsig/lib/libdl21seq.a").abspath()
 +c_logger_path =  path.Path("/spirs_tee_sdk/build/libgroupsig/lib/liblogger.a").abspath()
@@ -53,18 +55,3 @@ index c46f859..7d0a8ef 100644
  
  # Specify sources and library dependencies
  ffibuilder.set_source("_groupsig",
-                       r"""
-                       #include "groupsig.h"
--                      #include "kty04.h"
--                      #include "klap20.h"
-                       #include "gl19.h"
--                      #include "ps16.h"
-                       #include "bbs04.h"
-+                      #include "ps16.h"
-+                      #include "klap20.h"
-+                      #include "kty04.h"
-+                      #include "dl21.h"
-+                      #include "dl21seq.h"
-                       """,
-                       libraries=["stdc++","ssl","crypto"],
-                       runtime_library_dirs=[

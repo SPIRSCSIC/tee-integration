@@ -6,14 +6,6 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <errno.h>
-#include <openssl/rand.h>
-
-#include "groupsig.h"
-#include "kty04.h"
-#include "ps16.h"
-#include "gl19.h"
-#include "common.h"
-#include "mondrian.h"
 
 // Only required header for using SPIRS GlobalPlatform TEE Internal API
 #include <tee_ta_api_gicp.h>

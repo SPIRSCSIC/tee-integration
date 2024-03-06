@@ -4,6 +4,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--allow-multiple-defin
 
 target_link_libraries(${TA_BINARY}
   kty04
+  cpy06
   bbs04
   gl19
   ps16

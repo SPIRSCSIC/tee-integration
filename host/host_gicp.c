@@ -217,11 +217,18 @@ int arguments(char** out_b, int in_n, char** in_b) {
   int len = strlen(in_b[0]) + 1;
   *out_b = (char *) malloc(len);
   strcat(*out_b, in_b[0]);
-  for (int i = 2; i < in_n; i++) { // skip "./prog" and "toolbox"
-    len += 1 + strlen(in_b[i]); // separator + argument
+  for (int i = 1; i < in_n; i++) { // skip "./prog"
+    if (i == 1) // workaround for .ke --arguments
+      len += 3 + strlen(in_b[i]); // separator + "--" + argument
+    else
+      len += 1 + strlen(in_b[i]); // separator + argument
     *out_b = (char *) realloc(*out_b, len);
     strcat(*out_b, "|");
-    strcat(*out_b, in_b[i]);
+    if (i == 1)  {
+      strcat(*out_b, "--");
+      strcat(*out_b, in_b[i]);
+    } else
+      strcat(*out_b, in_b[i]);
   }
   return len;
 }
@@ -266,37 +273,52 @@ static void toolbox(int argc, char** argv) {
   free(buffer);
 }
 
+int host_usage(char** argv) {
+  fprintf(stderr,
+         "Usage: %s [demo|benchmark] OPTS\n"
+         "\t demo mondrian|pairings|kty04|ps16]\n"
+         "\t benchmark kty04|ps16\n"
+         "\t groupsig [GOPTS]\n"
+         "\t mondrian [MOPTS]\n"
+         "\t help\n"
+          ,
+         argv[0]);
+  return -1;
+}
+
 int main(int argc, char** argv) {
   setvbuf(stdout, 0, _IONBF, 0);
-  int err = 0;
 
-  if (argc < 2) {
-    err++;
-  } else {
-    if (!strcmp(argv[1], "mondrian")) {
-      demo_mondrian();
-    } else if (!strcmp(argv[1], "pairings")) {
-      demo_pairings();
-    } else if (!strcmp(argv[1], "kty04")) {
-      demo_kty04();
-    } else if (!strcmp(argv[1], "ps16")) {
-      demo_ps16();
-    } else if (!strcmp(argv[1], "benchmark_kty04")) {
-      benchmark_kty04();
-    } else if (!strcmp(argv[1], "benchmark_ps16")) {
-      benchmark_ps16();
-    } else if (!strcmp(argv[1], "toolbox")) {
-      toolbox(argc, argv);
+  if (argc > 1) {
+    if (!strcmp(argv[1], "demo")) {
+      if (argc > 2) {
+        if (!strcmp(argv[2], "mondrian")) {
+          demo_mondrian();
+        } else if (!strcmp(argv[2], "pairings")) {
+          demo_pairings();
+        } else if (!strcmp(argv[2], "kty04")) {
+          demo_kty04();
+        } else if (!strcmp(argv[2], "ps16")) {
+          demo_ps16();
+        }
+      } else {
+        return host_usage(argv);
+      }
+    } else if (!strcmp(argv[1], "benchmark")) {
+      if (argc > 2) {
+        if (!strcmp(argv[2], "kty04")) {
+          benchmark_kty04();
+        } else if (!strcmp(argv[2], "ps16")) {
+          benchmark_ps16();
+        }
+      } else {
+        return host_usage(argv);
+      }
     } else {
-      err++;
+      toolbox(argc, argv);
     }
-  }
-
-  if (err) {
-    errorf("Usage: %s (mondrian|pairings|kty04|ps16|"
-           "benchmark_kty04|benchmark_ps16|toolbox) [OPTS]\n",
-           argv[0]);
-    return -1;
+  } else {
+    return host_usage(argv);
   }
   return 0;
 }

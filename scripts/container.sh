@@ -39,8 +39,11 @@ docker exec $CNAME make -C build/buildroot.build python3-dirclean all
 echo "Installing python dependencies"
 docker exec $CNAME sh -c 'apt update && apt install -y python3-pip && pip install path requests'
 
-echo "Building enclave"
-docker exec $CNAME sh -c 'cmake -B /spirs_tee_sdk/build /spirs_tee_sdk && make -C /spirs_tee_sdk/build'
+# echo "Building enclave"
+# docker exec $CNAME sh -c 'cmake -B /spirs_tee_sdk/build /spirs_tee_sdk && make -C /spirs_tee_sdk/build'
+
+echo "Building enclave (debug)"
+docker exec $CNAME sh -c 'cmake -B /spirs_tee_sdk/build /spirs_tee_sdk -DCMAKE_BUILD_TYPE=Debug && make -C /spirs_tee_sdk/build'
 
 echo "Building libgroupsig"
 docker exec $CNAME sh -c 'cmake -B /spirs_tee_sdk/build/libgroupsig /spirs_tee_sdk/modules/libgroupsig && make -C /spirs_tee_sdk/build/libgroupsig'

@@ -12,6 +12,7 @@
 #include "groupsig.h"
 #include "kty04.h"
 #include "ps16.h"
+#include "cpy06.h"
 #include "common.h"
 #include "mondrian.h"
 #include "shim/base64.h"
@@ -28,8 +29,9 @@ char *SCHEME = NULL;
 int PHASE = -1;
 int CODE = -1;
 int REV = 0;
-int REVD = 0;
+int STAT = 0;
 int JOIN = 0;
+int VER = 0;
 static int groupsig_flag;
 static int mondrian_flag;
 static int anonymize_flag;
@@ -89,13 +91,13 @@ void check_digit(char* str, char* msg) {
 int valid_schemes() {
   if (strcmp(SCHEME, "ps16")
       && strcmp(SCHEME, "kty04")
-      && strcmp(SCHEME, "gl19"))
+      && strcmp(SCHEME, "cpy06"))
     return 0;
   return 1;
 }
 
 int crl_schemes() {
-  if (CODE == GROUPSIG_KTY04_CODE)/* || CODE == GROUPSIG_CPY06_CODE)*/
+  if (CODE == GROUPSIG_KTY04_CODE || CODE == GROUPSIG_CPY06_CODE)
     return 1;
   return 0;
 }
@@ -103,8 +105,8 @@ int crl_schemes() {
 void code_from_scheme() {
   if (!strcmp(SCHEME, "ps16"))
     CODE = GROUPSIG_PS16_CODE;
-  else if (!strcmp(SCHEME, "gl19"))
-    CODE = GROUPSIG_GL19_CODE;
+  else if (!strcmp(SCHEME, "cpy06"))
+    CODE = GROUPSIG_CPY06_CODE;
   else if (!strcmp(SCHEME, "kty04"))
     CODE = GROUPSIG_KTY04_CODE;
 }
@@ -112,8 +114,8 @@ void code_from_scheme() {
 void scheme_from_code() {
   if (CODE == GROUPSIG_PS16_CODE) {
     SCHEME = "ps16";
-  } else if (CODE == GROUPSIG_GL19_CODE) {
-    SCHEME = "gl19";
+  } else if (CODE == GROUPSIG_CPY06_CODE) {
+    SCHEME = "cpy06";
   } else if (CODE == GROUPSIG_KTY04_CODE) {
     SCHEME = "kty04";
   } else {
@@ -122,15 +124,10 @@ void scheme_from_code() {
   }
 }
 
-int init_schemes() {
-  if (!crl_schemes())
-    return 1;
-  return 0;
-}
 
 // bbs04, kty04, cpy06
 int twophase_schemes() {
-  if (!strcmp(SCHEME, "kty04")/* || !strcmp(SCHEME, "cpy06")*/)
+  if (!strcmp(SCHEME, "kty04") || !strcmp(SCHEME, "cpy06"))
     return 1;
   return 0;
 }
@@ -222,15 +219,15 @@ void load_data(void **data, int type) {
   char *file = GRPKEY;
   if (type == 1) {
     msg1 = "mgrkey_import";
-     file = MGRKEY;
+    file = MGRKEY;
     import = &groupsig_mgr_key_import;
   } else if (type == 3) {
     msg1 = "gml_import";
-     file = GML;
+    file = GML;
     import = &gml_import;
   } else if (type == 4) {
     msg1 = "sig_import";
-     file = SIG_PATH;
+    file = SIG_PATH;
     import = &groupsig_signature_import;
   }
   FILE *fp = fopen(file, "r");
@@ -251,11 +248,9 @@ void load_data(void **data, int type) {
   if (CODE == -1) {
     CODE = dec_buff[0];
     scheme_from_code();
-    if (init_schemes()) {
-      int rc = 255;
-      rc = groupsig_init(CODE, time(NULL));
-      check_rc(rc, "init");
-    }
+    int rc = 255;
+    rc = groupsig_init(CODE, time(NULL));
+    check_rc(rc, "init");
   }
   if (type == 3 && !strlen(dec_buff)) {
     *data = gml_init(CODE);
@@ -291,7 +286,7 @@ void join(message_t *msg,
       exit(1);
     }
     if (PHASE == 2)
-       save_data(gml, 3);
+      save_data(gml, 3);
     free(out);
   } else {
     if (PHASE != 1) {
@@ -308,9 +303,19 @@ void join(message_t *msg,
   message_free(msg_out); msg_out = NULL;
 }
 
-void revoke_member(groupsig_key_t *grpkey, groupsig_key_t *mgrkey,
-                   gml_t *gml, crl_t *crl,
-                   groupsig_signature_t *sig) {
+void verify_signature(groupsig_key_t *grpkey,
+                      groupsig_signature_t *sig,
+                      message_t *msg) {
+  uint8_t ret = 255;
+  int rc = 255;
+  rc = groupsig_verify(&ret, sig, msg, grpkey);
+  check_rc(rc, "verify");
+  printf("%d\n", ret); // 0 means OK
+}
+
+void revoke_signature_identity(groupsig_key_t *grpkey, groupsig_key_t *mgrkey,
+                               gml_t *gml, crl_t *crl,
+                               groupsig_signature_t *sig) {
   uint64_t idx = 255;
   groupsig_proof_t *proof_op;
   int rc = 255;
@@ -327,20 +332,20 @@ void revoke_member(groupsig_key_t *grpkey, groupsig_key_t *mgrkey,
   printf("%d\n", 1);
 }
 
-void revoked_member(groupsig_key_t *grpkey,
-                    gml_t *gml, crl_t *crl,
-                    groupsig_signature_t *sig) {
+void status_signature_identity(groupsig_key_t *grpkey,
+                               gml_t *gml, crl_t *crl,
+                               groupsig_signature_t *sig) {
   uint8_t ret = 255;
   int rc = 255;
-  // everybody can use this function, but we provide here in a OCSP-like
+  // everybody can use this function, but we provide here in OCSP-like API
   rc = groupsig_trace(&ret, sig, grpkey, crl, NULL, gml);
   check_rc(rc, "trace");
   printf("%d\n", ret); // 1 means revoked
 }
 
 void groupsig_mode() {
-  if ((JOIN + REV + REVD) > 1) {
-    fprintf(stderr, "Error: join, revoke or revoked are mutually exclusive\n");
+  if ((JOIN + VER + REV + STAT) > 1) {
+    fprintf(stderr, "Error: join, verify, revoke or status are mutually exclusive\n");
     exit(1);
   }
   setup_seed();
@@ -358,11 +363,9 @@ void groupsig_mode() {
       exit(1);
     } else {
       code_from_scheme();
-      if (init_schemes()) {
-        int rc = 255;
-        rc = groupsig_init(CODE, time(NULL));
-        check_rc(rc, "init");
-      }
+      int rc = 255;
+      rc = groupsig_init(CODE, time(NULL));
+      check_rc(rc, "init");
     }
     grpkey = groupsig_grp_key_init(CODE);
     check_ptr(grpkey, "grpkey");
@@ -395,7 +398,7 @@ void groupsig_mode() {
       exit(1);
     }
   }
-  if (!JOIN && !REV && !REVD) {
+  if (!JOIN && !VER && !REV && !STAT) {
     print_data(grpkey, 0);
   } else if (JOIN) {
     if (!MSG_PATH) {
@@ -410,6 +413,18 @@ void groupsig_mode() {
     }
     join(msg, grpkey, mgrkey, gml);
     message_free(msg); msg = NULL;
+  } else if (VER) {
+    if (!MSG_PATH) {
+      fprintf(stderr, "Error: message missing\n");
+      exit(1);
+    }
+    message_t *msg;
+    load_message(&msg);
+    groupsig_signature_t *sig;
+    load_data(&sig, 4);
+    verify_signature(grpkey, sig, msg);
+    groupsig_signature_free(sig); sig = NULL;
+    message_free(msg); msg = NULL;
   } else if (REV) {
     if (!crl_schemes()) {
       fprintf(stderr, "Error: %s scheme does not support revoke\n", SCHEME);
@@ -417,16 +432,16 @@ void groupsig_mode() {
     }
     groupsig_signature_t *sig;
     load_data(&sig, 4);
-    revoke_member(grpkey, mgrkey, gml, crl, sig);
+    revoke_signature_identity(grpkey, mgrkey, gml, crl, sig);
     groupsig_signature_free(sig); sig = NULL;
-  } else if (REVD) {
+  } else if (STAT) {
     if (!crl_schemes()) {
       fprintf(stderr, "Error: %s scheme does not support revoked\n", SCHEME);
       exit(1);
     }
     groupsig_signature_t *sig;
     load_data(&sig, 4);
-    revoked_member(grpkey, gml, crl, sig);
+    status_signature_identity(grpkey, gml, crl, sig);
     groupsig_signature_free(sig); sig = NULL;
   }
   groupsig_grp_key_free(grpkey); grpkey = NULL;
@@ -435,6 +450,7 @@ void groupsig_mode() {
   if (crl_schemes()) {
     crl_free(crl); crl = NULL;
   }
+  groupsig_clear(CODE);
 }
 
 void mondrian_mode() {
@@ -455,7 +471,7 @@ void mondrian_mode() {
   free_mem();
 }
 
-void usage(int error) {
+void toolbox_usage(char** argv, int error) {
   FILE *out = stdout;
   if (error) {
     out = stderr;
@@ -463,18 +479,22 @@ void usage(int error) {
   }
   fprintf(out,
           "Usage: \n"
-          "\t./tee_demos.ke toolbox MODE [MODE_FLAGS] [MODE_OPTS]\n\n"
+          "\t%s MODE [MODE_FLAGS] [MODE_OPTS]\n\n"
           "Mode:"
-          "\t--groupsig\t\t Groupsig functionality\n"
-          "\t--mondrian\t\t Mondrian functionality\n\n"
+          "\tdemo\t\t\t Demos functionality\n"
+          "\tbenchmark\t\t Benchmark functionality\n"
+          "\tgroupsig\t\t Groupsig functionality\n"
+          "\tmondrian\t\t Mondrian functionality\n"
+          "\thelp\t\t This help\n\n"
           "Groupsig options:\n"
           "\t--scheme|-s SCHEME\t Scheme to be used: ps16, kty04\n"
-          "\t--revoke|-r SIG\t\t Signature file path to be revoked\n"
-          "\t--revoked|-r SIG\t\t Signature file path to check revoke status\n"
+          "\t--revoke|-r SIG\t\t Signature file path to revoke\n"
+          "\t--status|-r SIG\t Signature file path to check revocation status\n"
+          "\t--verify|-r SIG\t Signature file path to verify\n"
           "\t--join|-j PHASE\t\t Join phase to execute\n"
           "\t--message|-m MSG\t Message file path\n"
-          "\t--directory|-m DIR\t\t Group signature crypto material path. Must exist.\n\n"
-          "\t--affix|-m AFX\t\t Affix to add at the end of each crypto material file\n\n"
+          "\t--directory|-m DIR\t Group signature crypto material path. Must exist.\n\n"
+          "\t--affix|-m AFFIX\t\t Affix to add at the end of each crypto material file\n\n"
           "Mondrian flags:\n"
           "\t--anonymize\t\t If present, anonymize output attributes\n"
           "\t--relaxed\t\t If present, run on relaxed mode instead of strict\n"
@@ -482,7 +502,8 @@ void usage(int error) {
           "Mondrian options:\n"
           "\t--input|-i INPUT\t Input file path. Default: ../datasets/adults.csv\n"
           "\t--output|-o OUTPUT\t Output file path. Default: output.csv\n"
-          "\t--k|-k VALUE\t\t k-Anonymity value. Default: 10\n");
+          "\t--k|-k VALUE\t\t k-Anonymity value. Default: 10\n",
+          argv[0]);
   exit(error);
 }
 
@@ -495,9 +516,10 @@ int toolbox_main(int argc, char** argv) {
     {"mondrian", no_argument, &mondrian_flag, 1}, /* this should be an argument instead of flag to be similar to groupsig schemes */
     /* libgroupsig options */
     {"scheme", required_argument, 0, 's'},
-    {"revoke", required_argument, 0, 'r'},
-    {"revoked", required_argument, 0, 'v'},
     {"join", required_argument, 0, 'j'},
+    {"verify", required_argument, 0, 'v'},
+    {"revoke", required_argument, 0, 'r'},
+    {"status", required_argument, 0, 't'},
     {"message", required_argument, 0, 'm'},
     {"directory", required_argument, 0, 'd'},
     {"affix", required_argument, 0, 'a'},
@@ -515,7 +537,7 @@ int toolbox_main(int argc, char** argv) {
     {0, 0, 0, 0}
   };
 
-  while ((opt = getopt_long(argc, argv, "s:r:v:j:m:d:a:i:k:o:h",
+  while ((opt = getopt_long(argc, argv, "s:j:v:r:t:m:d:a:i:k:o:h",
                             long_options, &opt_idx)) != -1) {
     switch (opt) {
     case 0:
@@ -525,18 +547,22 @@ int toolbox_main(int argc, char** argv) {
     case 's':
       SCHEME = optarg;
       break;
-    case 'r':
-      SIG_PATH = optarg;
-      REV = 1;
-      break;
-    case 'v':
-      SIG_PATH = optarg;
-      REVD = 1;
-      break;
     case 'j':
       check_digit(optarg, "join");
       PHASE = atoi(optarg);
       JOIN = 1;
+      break;
+    case 'v':
+      SIG_PATH = optarg;
+      VER = 1;
+      break;
+    case 'r':
+      SIG_PATH = optarg;
+      REV = 1;
+      break;
+    case 't':
+      SIG_PATH = optarg;
+      STAT = 1;
       break;
     case 'm':
       MSG_PATH = optarg;
@@ -558,12 +584,12 @@ int toolbox_main(int argc, char** argv) {
       OUTPUT = optarg;
       break;
     case 'h':
-      usage(0);
+      toolbox_usage(argv, 0);
       break;
     case '?':
-       break;
+      break;
     default:
-      usage(1);
+      toolbox_usage(argv, 1);
     }
   }
   sprintf(GRPKEY, "%s/grpkey%s", DIRE, AFFIX);
@@ -578,6 +604,6 @@ int toolbox_main(int argc, char** argv) {
   } else if (mondrian_flag) {
     mondrian_mode();
   } else
-    usage(0);
+    toolbox_usage(argv, 0);
   return 0;
 }

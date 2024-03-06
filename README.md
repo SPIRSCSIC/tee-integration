@@ -29,12 +29,12 @@ cd .. # if you are inside spirs_tee_sdk directory
 scripts/container.sh
 ```
 
-Finally connect to `spirs` container and run the compilation command
+Finally connect to `spirs` container and run the command to start qemu
 
 ```bash
 docker exec -it spirs bash
 cd /spirs_tee_sdk
-cmake -B build && make -C build && make -C build -j image && make -C build -j qemu
+make -C build -j qemu
 ```
 
 ## Manual process
@@ -121,7 +121,8 @@ Connect to container and compile the project
 docker exec -it spirs bash
 cd /spirs_tee_sdk
 cmake -B build && make -C build
-cmake -B build/libgroupsig modules/libgroupsig && make -C build/libgroupsig # Needed to test libgroupsig client
+# Needed to test libgroupsig client
+cmake -B build/libgroupsig modules/libgroupsig && make -C build/libgroupsig
 apt update && apt install -y python3-pip && python3 -m pip install path requests
 cd modules/libgroupsig/src/wrappers/python/ && python3 setup.py bdist_wheel && pip install dist/pygroupsig-1.1.0-cp310-cp310-linux_x86_64.whl
 make -C build -j image && make -C build -j qemu

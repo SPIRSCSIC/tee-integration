@@ -48,7 +48,7 @@ def decode(resp, msg):
         sys.exit(1)
 
 
-class User:
+class Revoker:
     def __init__(self, args):
         self.args = args
         self.url = f"https://{args.host}:{args.port}"
@@ -56,7 +56,9 @@ class User:
         self.sess.verify = False
         self.sess.cert = (args.cert, args.key)
         self.code = None
+        self.coder = None
         self.grpkey = None
+        self.grpkeyr = None
         self.memkey = None
         self._load_crypto()
 
@@ -67,7 +69,7 @@ class User:
                 msgout = message.message_to_base64(msg1["msgout"])
                 res = self.sess.post(
                     f"{self.url}/groupsig/join",
-                    data={"phase": 1, "message": msgout},
+                    data={"phase": 1, "message": msgout, "revoker": 1},
                 )
                 data = decode(res, "Decoding join_1 message")
                 self.memkey = memkey.memkey_import(
@@ -75,7 +77,8 @@ class User:
                 )
             else:
                 res = self.sess.post(
-                    f"{self.url}/groupsig/join", data={"phase": 0}
+                    f"{self.url}/groupsig/join",
+                    data={"phase": 0, "revoker": 1}
                 )
                 data = decode(res, "Decoding join_0 message")
                 msg1 = message.message_from_base64(data["msg"])
@@ -83,7 +86,7 @@ class User:
                 msgout = message.message_to_base64(msg2["msgout"])
                 res2 = self.sess.post(
                     f"{self.url}/groupsig/join",
-                    data={"phase": 2, "message": msgout},
+                    data={"phase": 2, "message": msgout, "revoker": 1},
                 )
                 data2 = decode(res2, "Decoding join_2 message")
                 msg3 = message.message_from_base64(data2["msg"])
@@ -103,26 +106,70 @@ class User:
                 )
             )
 
-    def verify(self):
+    def verify(self, revoker=False):
         with self.args.asset.open("rb") as f:
             digest = hashlib.sha256(f.read()).hexdigest()
+        # I don't think we should implement verification for revoker
+        # but whatever
+        if revoker:
+            code = self.code
+            grpkey = self.grpkey
+        else:
+            code = self.coder
+            grpkey = self.grpkeyr
         with self.args.sig.open() as f:
-            sig = signature.signature_import(self.code, f.read())
-            ver = groupsig.verify(sig, digest, self.grpkey)
+            sig = signature.signature_import(code, f.read())
+            ver = groupsig.verify(sig, digest, grpkey)
             logging.info(f"Signature verified: {ver}")
             return ver
 
-    def _retrieve_grpkey(self):
-        res = self.sess.get(f"{self.url}/groupsig")
+    def revoke(self):
+        with self.args.sig.open() as f:
+            sig = f.read()
+        res = self.sess.get(
+            f"{self.url}/groupsig/revoke"
+        )
+        data = decode(res, "Decoding revoke token message")
+        token = data["msg"]
+        sigt = signature.signature_export(
+            groupsig.sign(token, self.memkey, self.grpkey)
+        )
+        res = self.sess.post(
+            f"{self.url}/groupsig/revoke",
+            data={"signature_token": sigt, "token": token,
+                  "signature": sig}
+        )
+        data = decode(res, "Decoding revoke message")
+        logging.info(data["msg"])
+
+    def status(self):
+        with self.args.sig.open() as f:
+            sig = f.read()
+            res = self.sess.post(
+                f"{self.url}/groupsig/status", data={"signature": sig}
+            )
+            data = decode(res, "Decoding status message")
+            logging.info(data["msg"])
+
+    def _retrieve_grpkey(self, revoker=True):
+        if not revoker:
+            res = self.sess.get(f"{self.url}/groupsig")
+        else:
+            res = self.sess.get(f"{self.url}/groupsig",
+                                data={"revoker": 1})
         try:
             data = res.json()
         except requests.JSONDecodeError:
             logging.error("Decoding groupkey message")
         else:
             grpkey_bytes = base64.b64decode(data["msg"])
-            self.code = grpkey_bytes[0]
-            groupsig.init(self.code)
-            self.grpkey = grpkey.grpkey_import(self.code, data["msg"])
+            if revoker:
+                self.code = grpkey_bytes[0]
+                groupsig.init(self.code)
+                self.grpkey = grpkey.grpkey_import(self.code, data["msg"])
+            else:
+                self.coder = grpkey_bytes[0]
+                self.grpkeyr = grpkey.grpkey_import(self.coder, data["msg"])
 
     def _save_crypto(self):
         if self.grpkey is not None:
@@ -145,6 +192,17 @@ class User:
                     )
             else:
                 self._retrieve_grpkey()
+        if self.grpkeyr is None:
+            if self.args.gkeyr.is_file():
+                with self.args.gkeyr.open() as f:
+                    data = f.read()
+                    grpkey_bytes = base64.b64decode(data)
+                    self.coder = grpkey_bytes[0]
+                    self.grpkeyr = grpkey.grpkey_import(
+                        self.coder, data
+                    )
+            else:
+                self._retrieve_grpkey()
         if self.memkey is None:
             if self.args.mkey.is_file():
                 with self.args.mkey.open() as f:
@@ -154,7 +212,9 @@ class User:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Groupsig client")
+    parser = argparse.ArgumentParser(
+        description="Groupsig auditor client"
+    )
     func = parser.add_mutually_exclusive_group(required=True)
     func.add_argument(
         "--register",
@@ -170,6 +230,21 @@ def parse_args():
         "-v",
         action="store_true",
         help="Verify signature, i.e. issued by a group",
+    )
+    func.add_argument(
+        "--verifyr",
+        "-vr",
+        action="store_true",
+        help="Verify revoker signature",
+    )
+    func.add_argument(
+        "--revoke", "-R", action="store_true", help="Revoke signature"
+    )
+    func.add_argument(
+        "--status",
+        "-t",
+        action="store_true",
+        help="Check signature status, i.e. signer has not been revoked",
     )
     parser.add_argument(
         "--host",
@@ -191,7 +266,7 @@ def parse_args():
         "-C",
         metavar="CERT",
         type=Path,
-        default="gicp_api/crypto/producers/user1.crt",
+        default="gicp_api/crypto/auditors/user1.crt",
         help="Client certificate",
     )
     parser.add_argument(
@@ -199,22 +274,30 @@ def parse_args():
         "-K",
         metavar="KEY",
         type=Path,
-        default="gicp_api/crypto/producers/user1.key",
+        default="gicp_api/crypto/auditors/user1.key",
         help="Client certificate key",
     )
     parser.add_argument(
         "--gkey",
         "-g",
         metavar="PATH",
-        default=Path("gkey"),
+        default=Path("gkey_rev"),
         type=Path,
         help="Group key file",
+    )
+    parser.add_argument(
+        "--gkeyr",
+        "-G",
+        metavar="PATH",
+        default=Path("gkey"),
+        type=Path,
+        help="Group key file of the client group",
     )
     parser.add_argument(
         "--mkey",
         "-m",
         metavar="PATH",
-        default=Path("mkey"),
+        default=Path("mkey_rev"),
         type=Path,
         help="Member key file",
     )
@@ -239,13 +322,19 @@ def parse_args():
 
 
 def main(args):
-    user = User(args)
+    user = Revoker(args)
     if args.register:
         user.register()
     if args.sign:
         user.sign()
     if args.verify:
         user.verify()
+    if args.verifyr:
+        user.verify(True)
+    if args.revoke:
+        user.revoke()
+    if args.status:
+        user.status()
     groupsig.clear(user.code)
 
 
