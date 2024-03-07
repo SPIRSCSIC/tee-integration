@@ -3,7 +3,7 @@ This repository contains the code needed to test the libgroupsig
 library inside the TEE.
 
 - [Setup docker container + QEMU](#setup-docker-container-qemu)
-- [Clients](#clients)
+- [Deployment](#deployment)
 
 ## Setup docker container + QEMU
 ### Automated process
@@ -151,3 +151,46 @@ certificate will be validated and, if everything is correct and the entity has t
 the registration will be completed.
 
 > A script named `test.sh` has been created showing a basic demo of the clients.
+
+### Deployment
+It's necessary to create the crypto material for each group. The crypto material will be
+located in the machine/QEMU in charge of the group (group manager).
+
+These commands serve as an example of deploying the group in QEMU
+```bash
+# Create the group for the services/entities
+./gdemos.ke groupsig -s cpy06
+# Create the group for the revokers
+./gdemos.ke groupsig -s cpy06 -a _rev
+# Launch the server
+python3 gicp_api/server.py
+```
+> The machine/QEMU hosting the groups must have python3 and
+> python3-flask installed
+
+These commands will be executed in another machine/QEMU by a service
+that need to sign assets/evidences/logs
+```bash
+# Register in group (This must contact the server)
+python3 gicp_api/client.py -r
+# Sign asset (locally)
+python3 gicp_api/client.py -s -a path/to/asset -S path/to/signature
+# If needed, it's possible to verify a signature (locally)
+python3 gicp_api/client.py -v -a path/to/asset -S path/to/signature
+```
+
+These commands will be executed in another machine/QEMU that need to
+revoke an identity if service/machine is compromised
+```bash
+# Register in revokers group (This must contact the server)
+python3 gicp_api/client_rev.py -r
+# Revoke identity based on signature (This must contact the server)
+python3 gicp_api/client_rev.py -R -S path/to/signature
+# Check status of signature's identity (This must contact the server)
+python3 gicp_api/client_rev.py -t -S path/to/signature
+
+# If needed, the revoker can sign signatures issued by services (locally)
+python3 gicp_api/client_rev.py -s -a path/to/signature -S path/to/revoker_signature
+# The revoker can verify signatures issued by services (locally)
+python3 gicp_api/client_rev.py -v -a path/to/asset -S path/to/signature
+```
