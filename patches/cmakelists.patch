@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ea4b56b..ee0d2b4 100644
+index ea4b56b..1735211 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.10)
@@ -37,7 +37,7 @@ index ea4b56b..ee0d2b4 100644
    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/enclave/${TA_BINARY} ${KEYSTONE_BUILD_DIR}/overlay/${FS_TA_DIR_PATH}
 +  COMMENT "Copying demo files"
 +  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/host/gicp_api ${KEYSTONE_BUILD_DIR}/overlay/root/gicp_api
-+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/enclave/gicp/tests ${KEYSTONE_BUILD_DIR}/overlay/root/groupsig
++  COMMAND mkdir -p ${KEYSTONE_BUILD_DIR}/overlay/root/groupsig
    VERBATIM
  )
  

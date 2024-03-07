@@ -37,6 +37,7 @@ static int mondrian_flag;
 static int anonymize_flag;
 static int relaxed_flag;
 static int results_flag;
+static int quiet_flag;
 
 
 void setup_seed() {
@@ -398,7 +399,7 @@ void groupsig_mode() {
       exit(1);
     }
   }
-  if (!JOIN && !VER && !REV && !STAT) {
+  if (!JOIN && !VER && !REV && !STAT && !quiet_flag) {
     print_data(grpkey, 0);
   } else if (JOIN) {
     if (!MSG_PATH) {
@@ -485,16 +486,17 @@ void toolbox_usage(char** argv, int error) {
           "\tbenchmark\t\t Benchmark functionality\n"
           "\tgroupsig\t\t Groupsig functionality\n"
           "\tmondrian\t\t Mondrian functionality\n"
-          "\thelp\t\t This help\n\n"
+          "\thelp\t\t\t This help\n\n"
           "Groupsig options:\n"
           "\t--scheme|-s SCHEME\t Scheme to be used: ps16, kty04\n"
           "\t--revoke|-r SIG\t\t Signature file path to revoke\n"
-          "\t--status|-r SIG\t Signature file path to check revocation status\n"
-          "\t--verify|-r SIG\t Signature file path to verify\n"
+          "\t--status|-r SIG\t\t Signature file path to check revocation status\n"
+          "\t--verify|-r SIG\t\t Signature file path to verify\n"
           "\t--join|-j PHASE\t\t Join phase to execute\n"
           "\t--message|-m MSG\t Message file path\n"
-          "\t--directory|-m DIR\t Group signature crypto material path. Must exist.\n\n"
-          "\t--affix|-m AFFIX\t\t Affix to add at the end of each crypto material file\n\n"
+          "\t--directory|-m DIR\t Group signature crypto material path. Must exist.\n"
+          "\t--affix|-m AFFIX\t Affix to add at the end of each crypto material file\n"
+          "\t--quiet\t\t Do not print group key\n\n"
           "Mondrian flags:\n"
           "\t--anonymize\t\t If present, anonymize output attributes\n"
           "\t--relaxed\t\t If present, run on relaxed mode instead of strict\n"
@@ -523,6 +525,7 @@ int toolbox_main(int argc, char** argv) {
     {"message", required_argument, 0, 'm'},
     {"directory", required_argument, 0, 'd'},
     {"affix", required_argument, 0, 'a'},
+    {"quiet", no_argument, &quiet_flag, 1},
     /* Mondrian flags */
     {"anonymize", no_argument, &anonymize_flag, 1},
     {"relaxed", no_argument, &relaxed_flag, 1},

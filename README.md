@@ -1,5 +1,12 @@
 # TEE integration
-## Automated process
+This repository contains the code needed to test the libgroupsig
+library inside the TEE.
+
+- [Setup docker container + QEMU](#setup-docker-container-qemu)
+- [Clients](#clients)
+
+## Setup docker container + QEMU
+### Automated process
 In order to compile the project, first run the script `setup.sh`
 
 ```bash
@@ -37,7 +44,7 @@ cd /spirs_tee_sdk
 make -C build -j qemu
 ```
 
-## Manual process
+### Manual process
 The first step is to clone the
 [libgroupsig](https://gitlab.gicp.es/spirs/libgroupsig.git) and
 [mondrian](https://gitlab.gicp.es/spirs/mondrian.git) repositories
@@ -127,3 +134,20 @@ apt update && apt install -y python3-pip && python3 -m pip install path requests
 cd modules/libgroupsig/src/wrappers/python/ && python3 setup.py bdist_wheel && pip install dist/pygroupsig-1.1.0-cp310-cp310-linux_x86_64.whl
 make -C build -j image && make -C build -j qemu
 ```
+
+## Clients
+The code of the clients (entities and revokers) can be found under
+`host/gicp_api`. There are 3 parts:
+- **server.py**: This code runs in the same machine as the TEE. It'll execute the commands
+  through `gdemos.ke`
+- **client.py**: This is the client used by every entity that is in charge of signing assets.
+- **client_rev.py**: This is the client used by entities that have the permission to revoke signature identities.
+
+The messages between server and clients must be mutually authenticated. The server must have
+access to the CA chain in order to validate client certificates.
+> The mutual authentication step can be removed if that is not required.
+Clients must send their certificate if they want to register in a group, that
+certificate will be validated and, if everything is correct and the entity has the permissions,
+the registration will be completed.
+
+> A script named `test.sh` has been created showing a basic demo of the clients.

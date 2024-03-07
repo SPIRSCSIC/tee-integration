@@ -46,15 +46,15 @@ def temp():
 
 def run(cmd, text):
     logging.info(" ".join(cmd))
-    logging.info(text)
+    # logging.info(text)
     out = subprocess.run(cmd, capture_output=True)
-    logging.info(f"stdout: {out.stdout}\n\nstderr: {out.stderr}")
+    # logging.info(f"stdout: {out.stdout}\n\nstderr: {out.stderr}")
     if out.stderr:
         msg = ERR.search(out.stderr).group(1)
     else:
         msg = OK.search(out.stdout).group(1)
     msg = msg.decode().strip()
-    logging.info(msg)
+    # logging.info(msg)
     return msg
 
 
@@ -182,11 +182,11 @@ def groupsig_join():
             msg = file_msg.read()
             if isinstance(msg, (bytes, bytearray)):
                 msg = msg.decode()
-            if int(phase) in [1, 2]:
-                tokens[crt_hash] = True
-                save_tokens()
         else:
             msg = output
+        if int(phase) in [1, 2]:
+            tokens[crt_hash] = True
+            save_tokens()
         return status("success", msg)
 
 
@@ -238,7 +238,7 @@ def groupsig_revoke():
             NONCES[token] = True
             return status("success", "Identity revoked")
         else:
-            return status("success", "Identity could not be revoked")
+            return status("success", output)
     else:
         return status("error", "Invalid signature")
 

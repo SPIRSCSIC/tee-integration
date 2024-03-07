@@ -60,8 +60,14 @@ class User:
         self.memkey = None
         self._load_crypto()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        groupsig.clear(self.code)
+
     def register(self):
-        if self.memkey is None:
+        if self.memkey is None and self.grpkey is not None:
             if twophase(self.code):
                 msg1 = groupsig.join_mem(0, self.grpkey)
                 msgout = message.message_to_base64(msg1["msgout"])
@@ -70,59 +76,73 @@ class User:
                     data={"phase": 1, "message": msgout},
                 )
                 data = decode(res, "Decoding join_1 message")
-                self.memkey = memkey.memkey_import(
-                    self.code, data["msg"]
-                )
+                if data["status"] == "success":
+                    self.memkey = memkey.memkey_import(
+                        self.code, data["msg"]
+                    )
+                else:
+                    logging.error(data["msg"])
+                    return data["msg"]
             else:
                 res = self.sess.post(
                     f"{self.url}/groupsig/join", data={"phase": 0}
                 )
                 data = decode(res, "Decoding join_0 message")
-                msg1 = message.message_from_base64(data["msg"])
-                msg2 = groupsig.join_mem(1, self.grpkey, msgin=msg1)
-                msgout = message.message_to_base64(msg2["msgout"])
-                res2 = self.sess.post(
-                    f"{self.url}/groupsig/join",
-                    data={"phase": 2, "message": msgout},
-                )
-                data2 = decode(res2, "Decoding join_2 message")
-                msg3 = message.message_from_base64(data2["msg"])
-                msg4 = groupsig.join_mem(
-                    3, self.grpkey, msgin=msg3, memkey=msg2["memkey"]
-                )
-                self.memkey = msg4["memkey"]
+                if data["status"] == "success":
+                    msg1 = message.message_from_base64(data["msg"])
+                    msg2 = groupsig.join_mem(1, self.grpkey, msgin=msg1)
+                    msgout = message.message_to_base64(msg2["msgout"])
+                    res2 = self.sess.post(
+                        f"{self.url}/groupsig/join",
+                        data={"phase": 2, "message": msgout},
+                    )
+                    data2 = decode(res2, "Decoding join_2 message")
+                    msg3 = message.message_from_base64(data2["msg"])
+                    msg4 = groupsig.join_mem(
+                        3, self.grpkey, msgin=msg3, memkey=msg2["memkey"]
+                    )
+                    self.memkey = msg4["memkey"]
+                else:
+                    logging.error(data["msg"])
+                    return data["msg"]
             self._save_crypto()
+            return memkey.memkey_export(self.memkey)
+        else:
+            logging.error("Already registered")
 
     def sign(self):
-        with self.args.asset.open("rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()
-        with self.args.sig.open("w") as f:
-            f.write(
-                signature.signature_export(
-                    groupsig.sign(digest, self.memkey, self.grpkey)
-                )
+        if self.memkey is not None and self.grpkey is not None:
+            with self.args.asset.open("rb") as f:
+                digest = hashlib.sha256(f.read()).hexdigest()
+            sig = signature.signature_export(
+                groupsig.sign(digest, self.memkey, self.grpkey)
             )
+            with self.args.sig.open("w") as f:
+                f.write(sig)
+            return sig
+        else:
+            logging.error("Missing memkey or grpkey")
 
     def verify(self):
-        with self.args.asset.open("rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()
-        with self.args.sig.open() as f:
-            sig = signature.signature_import(self.code, f.read())
+        if self.grpkey is not None:
+            with self.args.asset.open("rb") as f:
+                digest = hashlib.sha256(f.read()).hexdigest()
+            with self.args.sig.open() as f:
+                sig = signature.signature_import(self.code, f.read())
             ver = groupsig.verify(sig, digest, self.grpkey)
             logging.info(f"Signature verified: {ver}")
             return ver
+        else:
+            logging.error("Missing grpkey")
 
     def _retrieve_grpkey(self):
         res = self.sess.get(f"{self.url}/groupsig")
-        try:
-            data = res.json()
-        except requests.JSONDecodeError:
-            logging.error("Decoding groupkey message")
-        else:
-            grpkey_bytes = base64.b64decode(data["msg"])
-            self.code = grpkey_bytes[0]
-            groupsig.init(self.code)
-            self.grpkey = grpkey.grpkey_import(self.code, data["msg"])
+        data = decode(res, "Decoding groupkey message")
+        grpkey_bytes = base64.b64decode(data["msg"])
+        self.code = grpkey_bytes[0]
+        groupsig.init(self.code)
+        self.grpkey = grpkey.grpkey_import(self.code, data["msg"])
+        self._save_crypto()
 
     def _save_crypto(self):
         if self.grpkey is not None:
@@ -239,14 +259,13 @@ def parse_args():
 
 
 def main(args):
-    user = User(args)
-    if args.register:
-        user.register()
-    if args.sign:
-        user.sign()
-    if args.verify:
-        user.verify()
-    groupsig.clear(user.code)
+    with User(args) as user:
+        if args.register:
+            print(user.register())
+        if args.sign:
+            print(user.sign())
+        if args.verify:
+            print(user.verify())
 
 
 if __name__ == "__main__":
