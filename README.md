@@ -136,12 +136,12 @@ make -C build -j image && make -C build -j qemu
 ```
 
 ## Clients
-The code of the clients (entities and revokers) can be found under
-`host/gicp_api`. There are 3 parts:
+The code of the clients (producers and monitors) can be found under
+`host/gicp_api`. There are 3 elements:
 - **server.py**: This code runs in the same machine as the TEE. It'll execute the commands
   through `gdemos.ke`
 - **client.py**: This is the client used by every entity that is in charge of signing assets.
-- **client_rev.py**: This is the client used by entities that have the permission to revoke signature identities.
+- **client_mon.py**: This is the client used by entities (monitors) that have the permission to revoke signature identities.
 
 The messages between server and clients must be mutually authenticated. The server must have
 access to the CA chain in order to validate client certificates.
@@ -158,12 +158,13 @@ located in the machine/QEMU in charge of the group (group manager).
 
 These commands serve as an example of deploying the group in QEMU
 ```bash
-# Create the group for the services/entities
+# Create the group for producers
 ./gdemos.ke groupsig -s cpy06
-# Create the group for the revokers
-./gdemos.ke groupsig -s cpy06 -a _rev
+# Create the group for monitors
+./gdemos.ke groupsig -s cpy06 -a _mon
 # Launch the server
-python3 gicp_api/server.py
+python3 gicp_api/server.py -C path/CERT -K path/KEY -c path/CHAIN
+# python3 gicp_api/server.py -C crypto/gms/usr1.crt -K crypto/gms/usr1.key -c path/chain.pem
 ```
 > The machine/QEMU hosting the groups must have python3 and
 > python3-flask installed
@@ -174,23 +175,37 @@ that need to sign assets/evidences/logs
 # Register in group (This must contact the server)
 python3 gicp_api/client.py -r
 # Sign asset (locally)
-python3 gicp_api/client.py -s -a path/to/asset -S path/to/signature
+python3 gicp_api/client.py -s -a path/ASSET -S path/SIGNATURE
 # If needed, it's possible to verify a signature (locally)
-python3 gicp_api/client.py -v -a path/to/asset -S path/to/signature
+python3 gicp_api/client.py -v -a path/ASSET -S path/SIGNATURE
 ```
 
 These commands will be executed in another machine/QEMU that need to
 revoke an identity if service/machine is compromised
 ```bash
-# Register in revokers group (This must contact the server)
-python3 gicp_api/client_rev.py -r
+# Register in monitors group (This must contact the server)
+python3 gicp_api/client_mon.py -r
 # Revoke identity based on signature (This must contact the server)
-python3 gicp_api/client_rev.py -R -S path/to/signature
+python3 gicp_api/client_mon.py -R -S path/SIGNATURE
 # Check status of signature's identity (This must contact the server)
-python3 gicp_api/client_rev.py -t -S path/to/signature
+python3 gicp_api/client_mon.py -t -S path/SIGNATURE
 
-# If needed, the revoker can sign signatures issued by services (locally)
-python3 gicp_api/client_rev.py -s -a path/to/signature -S path/to/revoker_signature
+# If needed, the monitor can sign signatures issued by produers (locally)
+python3 gicp_api/client_mon.py -s -a path/SIGNATURE -S path/REVOKER_SIGNATURE
 # The revoker can verify signatures issued by services (locally)
-python3 gicp_api/client_rev.py -v -a path/to/asset -S path/to/signature
+python3 gicp_api/client_mon.py -v -a path/ASSET -S path/SIGNATURE
+```
+
+### Docker
+We have prepared docker containers with all the required dependencies to run the
+python libgroupsig wrapper
+
+Producers/Services client image
+```
+docker run --rm -it --network "host" -v $PWD/scripts/producers:/tmp/crypto tee-integration:client-prod -r -C /tmp/crypto/usr1.crt -K /tmp/crypto/usr1.key -H 127.0.0.1
+```
+
+Monitors/Revokers client image
+```
+docker run --rm -it --network "host" -v $PWD/scripts/monitors:/tmp/crypto tee-integration:client-mon -r -C /tmp/crypto/usr1.crt -K /tmp/crypto/usr1.key -H 127.0.0.1
 ```

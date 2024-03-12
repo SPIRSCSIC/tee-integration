@@ -14,6 +14,8 @@ clonepatch_sdk() {
     cp enclave/include/ta_shared_gicp.h $REPO/enclave/include/
     cp enclave/tee_internal_api/include/tee_ta_api_gicp.h $REPO/enclave/tee_internal_api/include/
     cp -r host/gicp_api host/host_gicp.c $REPO/host/
+    (cd scripts && ./crypto.sh gms monitors producers)
+    mkdir -p $REPO/crypto && cp -r scripts/gms scripts/monitors scripts/producers scripts/chain.pem $REPO/crypto
 }
 
 clonepatch_gs() {

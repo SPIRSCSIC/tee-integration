@@ -48,7 +48,7 @@ def decode(resp, msg):
         sys.exit(1)
 
 
-class User:
+class Producer:
     def __init__(self, args):
         self.args = args
         self.url = f"https://{args.host}:{args.port}"
@@ -195,7 +195,8 @@ def parse_args():
         "--host",
         "-H",
         metavar="HOST",
-        default="localhost",
+        required=True,
+        # default="localhost",
         help="Group signature API host/IP",
     )
     parser.add_argument(
@@ -211,7 +212,8 @@ def parse_args():
         "-C",
         metavar="CERT",
         type=Path,
-        default="gicp_api/crypto/producers/user1.crt",
+        required=True,
+        # default="gicp_api/crypto/producers/usr1.crt",
         help="Client certificate",
     )
     parser.add_argument(
@@ -219,7 +221,8 @@ def parse_args():
         "-K",
         metavar="KEY",
         type=Path,
-        default="gicp_api/crypto/producers/user1.key",
+        required=True,
+        # default="gicp_api/crypto/producers/usr1.key",
         help="Client certificate key",
     )
     parser.add_argument(
@@ -259,13 +262,13 @@ def parse_args():
 
 
 def main(args):
-    with User(args) as user:
+    with Producer(args) as prod:
         if args.register:
-            print(user.register())
+            print(prod.register())
         if args.sign:
-            print(user.sign())
+            print(prod.sign())
         if args.verify:
-            print(user.verify())
+            print(prod.verify())
 
 
 if __name__ == "__main__":

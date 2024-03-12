@@ -19,9 +19,9 @@ GS_SCHEMES = ["ps16", "kty04", "cpy06"]
 BS = ["./gdemos.ke"]
 OK = re.compile(rb"Package\n(.*)", re.S)
 ERR = re.compile(rb"(.*?)\[host\]", re.S)
-TOKENS = {"clients": {}, "revokers": {}}
+TOKENS = {"producers": {}, "monitors": {}}
 NONCES = {}
-GRPKEY = {"clients": None}
+GRPKEY = {"producers": None}
 
 app = Flask(__name__)
 
@@ -121,9 +121,9 @@ def anonymization_anonymize(scheme):
 @app.get("/groupsig")
 def groupsig_key():
     cmd_args = ["groupsig"]
-    revoker = request.form.get("revoker")
-    grpkey_k = "clients"
-    if revoker:
+    monitor = request.form.get("monitor")
+    grpkey_k = "producers"
+    if monitor:
         cmd_args.extend(["--affix", ARGS.affix])
         grpkey_k = ARGS.affix
         if grpkey_k not in GRPKEY:
@@ -141,10 +141,10 @@ def groupsig_schemes():
 
 @app.post("/groupsig/join")
 def groupsig_join():
-    tokens = TOKENS["clients"]
-    revoker = request.form.get("revoker")
-    if revoker:
-        tokens = TOKENS["revokers"]
+    tokens = TOKENS["producers"]
+    monitor = request.form.get("monitor")
+    if monitor:
+        tokens = TOKENS["monitors"]
     crt_hash = request.environ.get("CERT_HASH")
     if crt_hash not in tokens:
         tokens[crt_hash] = False
@@ -171,7 +171,7 @@ def groupsig_join():
             "--message",
             f"{file_msg.name}",
         ]
-        if revoker:
+        if monitor:
             cmd_args.extend(["--affix", ARGS.affix])
         output = run(
             BS
@@ -280,29 +280,25 @@ def parse_args():
         "--cert",
         "-C",
         metavar="CERT",
-        default="gicp_api/crypto/gms/user1.crt",
+        required=True,
+        # default="crypto/gms/usr1.crt",
         help="Server certificate",
     )
     parser.add_argument(
         "--key",
         "-K",
         metavar="KEY",
-        default="gicp_api/crypto/gms/user1.key",
+        required=True,
+        # default="crypto/gms/usr1.key",
         help="Server certificate key",
     )
     parser.add_argument(
         "--chain",
         "-c",
         metavar="CHAIN",
-        default="gicp_api/crypto/chain.pem",
+        required=True,
+        # default="gicp_api/crypto/chain.pem",
         help="Certificate chain to validate clients",
-    )
-    parser.add_argument(
-        "--revokers",
-        "-r",
-        metavar="CHAIN",
-        default="gicp_api/crypto/auditors/ca.crt",
-        help="Certificate chain to validate revokers",
     )
     parser.add_argument(
         "--tokens",
@@ -315,8 +311,8 @@ def parse_args():
         "--affix",
         "-a",
         metavar="AFFIX",
-        default="_rev",
-        help="Tokens file",
+        default="_mon",
+        help="Affix for monitor crypto material",
     )
     return parser.parse_args()
 

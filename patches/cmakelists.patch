@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ea4b56b..1735211 100644
+index ea4b56b..8be15a0 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.10)
@@ -31,17 +31,18 @@ index ea4b56b..1735211 100644
  # enclave
  add_subdirectory(enclave)
  
-@@ -133,6 +137,9 @@ add_custom_target(overlay
+@@ -133,6 +137,10 @@ add_custom_target(overlay
    COMMENT "Copying package ${package_name} and TA to rootfs"
    COMMAND mkdir -p ${KEYSTONE_BUILD_DIR}/overlay/${FS_TA_DIR_PATH}
    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/enclave/${TA_BINARY} ${KEYSTONE_BUILD_DIR}/overlay/${FS_TA_DIR_PATH}
-+  COMMENT "Copying demo files"
++  COMMENT "Copying demo files. Please do not use in production"
 +  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/host/gicp_api ${KEYSTONE_BUILD_DIR}/overlay/root/gicp_api
 +  COMMAND mkdir -p ${KEYSTONE_BUILD_DIR}/overlay/root/groupsig
++  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/crypto ${KEYSTONE_BUILD_DIR}/overlay/root/crypto
    VERBATIM
  )
  
-@@ -152,6 +159,12 @@ add_custom_target(qemu
+@@ -152,6 +160,12 @@ add_custom_target(qemu
    VERBATIM
  )
  

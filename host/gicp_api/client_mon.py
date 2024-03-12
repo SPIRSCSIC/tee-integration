@@ -48,7 +48,7 @@ def decode(resp, msg):
         sys.exit(1)
 
 
-class Revoker:
+class Monitor:
     def __init__(self, args):
         self.args = args
         self.url = f"https://{args.host}:{args.port}"
@@ -75,7 +75,7 @@ class Revoker:
                 msgout = message.message_to_base64(msg1["msgout"])
                 res = self.sess.post(
                     f"{self.url}/groupsig/join",
-                    data={"phase": 1, "message": msgout, "revoker": 1},
+                    data={"phase": 1, "message": msgout, "monitor": 1},
                 )
                 data = decode(res, "Decoding join_1 message")
                 if data["status"] == "success":
@@ -88,7 +88,7 @@ class Revoker:
             else:
                 res = self.sess.post(
                     f"{self.url}/groupsig/join",
-                    data={"phase": 0, "revoker": 1}
+                    data={"phase": 0, "monitor": 1}
                 )
                 data = decode(res, "Decoding join_0 message")
                 if data["status"] == "success":
@@ -97,7 +97,7 @@ class Revoker:
                     msgout = message.message_to_base64(msg2["msgout"])
                     res2 = self.sess.post(
                         f"{self.url}/groupsig/join",
-                        data={"phase": 2, "message": msgout, "revoker": 1},
+                        data={"phase": 2, "message": msgout, "monitor": 1},
                     )
                     data2 = decode(res2, "Decoding join_2 message")
                     msg3 = message.message_from_base64(data2["msg"])
@@ -126,12 +126,12 @@ class Revoker:
         else:
             logging.error("Missing memkey or grpkey")
 
-    def verify(self, revoker=False):
-        # I don't think we should implement verification for revoker
+    def verify(self, monitor=False):
+        # I don't think we should implement verification for monitor
         # but whatever
         code = self.codec
         grpkey = self.grpkeyc
-        if revoker:
+        if monitor:
             code = self.code
             grpkey = self.grpkey
         if grpkey is not None:
@@ -180,7 +180,7 @@ class Revoker:
             res = self.sess.get(f"{self.url}/groupsig")
         else:
             res = self.sess.get(f"{self.url}/groupsig",
-                                data={"revoker": 1})
+                                data={"monitor": 1})
         data = decode(res, "Decoding groupkey message")
         grpkey_bytes = base64.b64decode(data["msg"])
         if clients:
@@ -258,10 +258,10 @@ def parse_args():
         help="Verify signature, i.e. issued by a group",
     )
     func.add_argument(
-        "--verifyr",
-        "-vr",
+        "--verifym",
+        "-vm",
         action="store_true",
-        help="Verify revoker signature",
+        help="Verify monitor signature",
     )
     func.add_argument(
         "--revoke", "-R", action="store_true", help="Revoke signature"
@@ -276,7 +276,8 @@ def parse_args():
         "--host",
         "-H",
         metavar="HOST",
-        default="localhost",
+        required=True,
+        # default="localhost",
         help="Group signature API host/IP",
     )
     parser.add_argument(
@@ -292,7 +293,8 @@ def parse_args():
         "-C",
         metavar="CERT",
         type=Path,
-        default="gicp_api/crypto/auditors/user1.crt",
+        required=True,
+        # default="gicp_api/crypto/monitors/usr1.crt",
         help="Client certificate",
     )
     parser.add_argument(
@@ -300,16 +302,17 @@ def parse_args():
         "-K",
         metavar="KEY",
         type=Path,
-        default="gicp_api/crypto/auditors/user1.key",
+        required=True,
+        # default="gicp_api/crypto/monitors/usr1.key",
         help="Client certificate key",
     )
     parser.add_argument(
         "--gkey",
         "-g",
         metavar="PATH",
-        default=Path("gkey_rev"),
+        default=Path("gkey_mon"),
         type=Path,
-        help="Group key file of the revoker",
+        help="Group key file of the monitor",
     )
     parser.add_argument(
         "--gkeyc",
@@ -323,7 +326,7 @@ def parse_args():
         "--mkey",
         "-m",
         metavar="PATH",
-        default=Path("mkey_rev"),
+        default=Path("mkey_mon"),
         type=Path,
         help="Member key file",
     )
@@ -348,19 +351,19 @@ def parse_args():
 
 
 def main(args):
-    with Revoker(args) as revoker:
+    with Monitor(args) as mon:
         if args.register:
-            print(revoker.register())
+            print(mon.register())
         if args.sign:
-            print(revoker.sign())
+            print(mon.sign())
         if args.verify:
-            print(revoker.verify())
-        if args.verifyr:
-            print(revoker.verify(True))
+            print(mon.verify())
+        if args.verifym:
+            print(mon.verify(True))
         if args.revoke:
-            print(revoker.revoke())
+            print(mon.revoke())
         if args.status:
-            print(revoker.status())
+            print(mon.status())
 
 
 if __name__ == "__main__":

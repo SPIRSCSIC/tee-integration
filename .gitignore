@@ -1,1 +1,7 @@
+test/
+spirs_tee_sdk/
+*pem
+*crt
+*csr
+*key
 venv
