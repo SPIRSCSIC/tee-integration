@@ -1,0 +1,301 @@
+openapi: 3.0.0
+servers:
+  # Added by API Auto Mocking Plugin
+  - description: SwaggerHub API Auto Mocking
+    url: https://virtserver.swaggerhub.com/schica/groupsig/1.0.0
+info:
+  description: Groupsig server API
+  version: "1.0.0"
+  title: Groupsig Server API
+  contact:
+    email: sergio.chica@csic.es
+  license:
+    name: Apache 2.0
+    url: 'http://www.apache.org/licenses/LICENSE-2.0.html'
+tags:
+  - name: private
+    description: Monitors-only calls
+  - name: open
+    description: Operations available to everyone
+paths:
+  /anonymization/schemes:
+    get:
+      tags:
+        - open
+      summary: Retrieve anonynimization schemes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: ["mondrian"]
+  /anonymization/schemes/{scheme}:
+    post:
+      tags:
+        - open
+      summary: Process dataset using anonymization scheme
+      parameters:
+        - in: path
+          name: scheme
+          description: Anonymization scheme
+          required: true
+          schema:
+            type: string
+            example: mondrian
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestAnonymize'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseAnonymize'
+        '400':
+          description: ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /groupsig/key:
+    get:
+      tags:
+        - open
+      summary: Retrieve public group key
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseMessageEncoded'
+        '400':
+          description: ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /groupsig/join:
+    post:
+      tags:
+        - open
+      summary: Process manager join phase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestJoin'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseMessageEncoded'
+        '400':
+          description: ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /groupsig/revoke:
+    get:
+      tags:
+        - private
+      summary: Retrieve revocation token
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    description: Revocation token
+                    format: uuid
+                    example: d290f1ee-6c54-4b01-90e6-d701748f0851
+        '400':
+          description: ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - private
+      summary: Revoke signature's identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestRevoke'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseMessage'
+        '400':
+          description: ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /groupsig/status:
+    get:
+      tags:
+        - open
+      summary: Retrieve signature's identity status
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseMessage'
+        '400':
+          description: ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    RequestAnonymize:
+      type: object
+      required:
+        - dataset
+      properties:
+        dataset:
+          type: string
+          description: Dataset to process
+          example: |
+            0, 1, 4, 5, 6, 8, 9, 13
+            39, State-gov, 77516, Bachelors, 13, Never-married, Adm-clerical, Not-in-family, White, Male, 2174, 0, 40, United-States, <=50K
+            50, Self-emp-not-inc, 83311, Bachelors, 13, Married-civ-spouse, Exec-managerial, Husband, White, Male, 0, 0, 13, United-States, <=50K
+            38, Private, 215646, HS-grad, 9, Divorced, Handlers-cleaners, Not-in-family, White, Male, 0, 0, 40, United-States, <=50K
+            53, Private, 234721, 11th, 7, Married-civ-spouse, Handlers-cleaners, Husband, Black, Male, 0, 0, 40, United-States, <=50K
+            28, Private, 338409, Bachelors, 13, Married-civ-spouse, Prof-specialty, Wife, Black, Female, 0, 0, 40, Cuba, <=50K
+            37, Private, 284582, Masters, 14, Married-civ-spouse, Exec-managerial, Wife, White, Female, 0, 0, 40, United-States, <=50K
+        k:
+          type: integer
+          description: k-Anonymity
+          default: 10
+        mode:
+          type: string
+          description: Algorithm
+          default: "strict"
+          enum: ["relaxed", "strict"]
+    ResponseAnonymize:
+      type: object
+      required:
+        - msg
+      properties:
+        msg:
+          type: object
+          required:
+            - data
+            - output
+          properties:
+            data:
+              type: array
+              items:
+                type: array
+                items:
+                  type: string
+              description: Anonymized dataset
+              example: |
+                [["17~34","2","5~9","0","1~10","0~2","0~1","0~7"],["17~34","2","5~9","0","1~10","0~2","0~1","0~7"],["17~34","2","5~9","0","1~10","0~2","0~1","0~7"],["17~34",
+                "2","5~9","0","1~10","0~2","0~1","0~7"],["17~34","2","5~9","0","1~10","0~2","0~1","0~7"],["17~34","2","5~9","0","1~10","0~2","0~1","0~7"],["17~34","2","5~9","0","1~10","0~2"
+                ,"0~1","0~7"],["17~34","2","5~9","0","1~10","0~2","0~1","0~7"],["17~34","2","5~9","0","1~10","0~2","0~1","0~7"],["17~34","2","5~9","0","1~10","0~2","0~1","0~7"],["17~34","2"
+                ,"5~9","0","1~10","0~2","0~1","0~7"]]
+            output:
+              type: string
+              description: Mondrian statistics
+              example: |
+                K: 10
+                Normalized Certainty Penalty: 53.12%
+                Time: 0.02431100 sec
+    RequestJoin:
+      type: object
+      required:
+        - phase
+      properties:
+        phase:
+          type: integer
+          description: Join phase number
+          enum: [0, 1, 2]
+        message:
+          type: string
+          format: byte
+          description: Base64 encoded message
+          example: "AgAwAAAA4TKZsukOUmR...lJ67="
+        monitor:
+          type: integer
+          description: Is monitor flag
+          default: 0
+          enum: [0, 1]
+    RequestRevoke:
+      type: object
+      required:
+        - token
+        - signature_token
+        - signature
+      properties:
+        token:
+          type: string
+          format: uuid
+          description: Valid revocation token
+          example: d290f1ee-6c54-4b01-90e6-d701748f0851
+        signature_token:
+          type: string
+          format: byte
+          description: Base64 encoded token signature
+          example: "AgAwAAAA4TKZsukOUmR...lJ67="
+        signature:
+          type: string
+          format: byte
+          description: Base64 encoded signature
+          example: "AgAwAAAA4TKZsukOUmR...lJ67="
+    ResponseMessage:
+      type: object
+      required:
+        - msg
+      properties:
+        msg:
+          type: string
+          description: Plain text message
+          example: Message
+    ResponseMessageEncoded:
+      type: object
+      required:
+        - msg
+      properties:
+        msg:
+          type: string
+          format: byte
+          description: Base64 encoded message
+          example: "AgAwAAAA4TKZsukOUmR...lJ67="
+    Error:
+      type: object
+      required:
+        - msg
+      properties:
+        msg:
+          type: string
+          description: Error message
+          example: "Error message"

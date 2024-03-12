@@ -78,7 +78,7 @@ class Monitor:
                     data={"phase": 1, "message": msgout, "monitor": 1},
                 )
                 data = decode(res, "Decoding join_1 message")
-                if data["status"] == "success":
+                if res.status_code == 200:
                     self.memkey = memkey.memkey_import(
                         self.code, data["msg"]
                     )
@@ -91,7 +91,7 @@ class Monitor:
                     data={"phase": 0, "monitor": 1}
                 )
                 data = decode(res, "Decoding join_0 message")
-                if data["status"] == "success":
+                if res.status_code == 200:
                     msg1 = message.message_from_base64(data["msg"])
                     msg2 = groupsig.join_mem(1, self.grpkey, msgin=msg1)
                     msgout = message.message_to_base64(msg2["msgout"])

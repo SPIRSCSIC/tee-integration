@@ -12,10 +12,10 @@ from uuid import uuid4
 
 from flask import Flask, jsonify, request
 from werkzeug.serving import WSGIRequestHandler
+from werkzeug.exceptions import BadRequestKeyError
 
 
 A_SCHEMES = ["mondrian"]
-GS_SCHEMES = ["ps16", "kty04", "cpy06"]
 BS = ["./gdemos.ke"]
 OK = re.compile(rb"Package\n(.*)", re.S)
 ERR = re.compile(rb"(.*?)\[host\]", re.S)
@@ -49,13 +49,15 @@ def run(cmd, text):
     # logging.info(text)
     out = subprocess.run(cmd, capture_output=True)
     # logging.info(f"stdout: {out.stdout}\n\nstderr: {out.stderr}")
+    err = False
     if out.stderr:
         msg = ERR.search(out.stderr).group(1)
+        err = True
     else:
         msg = OK.search(out.stdout).group(1)
     msg = msg.decode().strip()
     # logging.info(msg)
-    return msg
+    return msg, err
 
 
 def save_tokens():
@@ -64,9 +66,11 @@ def save_tokens():
 
 
 def status(sts, msg):
+    code = 200
     if sts == "error":
         logging.error(msg)
-    return jsonify({"status": sts, "msg": msg})
+        code = 400
+    return jsonify({"msg": msg}), code
 
 
 class PeerCertWSGIRequestHandler(WSGIRequestHandler):
@@ -90,29 +94,35 @@ def anonymization_anonymize(scheme):
         return status(
             "error", f"Unsuported anonymization scheme: {scheme}"
         )
-    dataset = request.files["dataset"]
-    if not dataset:
+    try:
+        dataset = request.files["dataset"]
+    except BadRequestKeyError:
         return status("error", "Missing 'dataset' file")
     file_inp = temp_w(dataset.read().decode())
+    mode = request.form.get("mode")
+    relaxed = ""
+    if mode is not None and mode == "relaxed":
+        relaxed = "--relaxed"
     k = request.form.get("k")
     k = 10 if k is None else k
     file_out = temp()
-    output = run(
-        BS
-        + [
-            "mondrian",
-            "--anonymize",
-            "--input",
-            f"{file_inp.name}",
-            "--k",
-            f"{k}",
-            "--output",
-            f"{file_out.name}",
-        ],
-        "Anonymizing dataset",
-    )
+    cmd_args = [
+        "mondrian",
+        "--anonymize",
+        "--input",
+        f"{file_inp.name}",
+        "--k",
+        f"{k}",
+        "--output",
+        f"{file_out.name}",
+    ]
+    if relaxed:
+        cmd_args.append(relaxed)
+    output, err = run(BS + cmd_args, "Anonymizing dataset")
+    if err:
+        return status("error", output)
     csv_data = []
-    csv_reader = csv.DictReader(file_out)
+    csv_reader = csv.reader(file_out)
     for row in csv_reader:
         csv_data.append(row)
     return status("success", {"data": csv_data, "output": output})
@@ -121,30 +131,29 @@ def anonymization_anonymize(scheme):
 @app.get("/groupsig")
 def groupsig_key():
     cmd_args = ["groupsig"]
-    monitor = request.form.get("monitor")
     grpkey_k = "producers"
-    if monitor:
+    monitor = request.form.get("monitor")
+    if monitor is not None and monitor == "1":
         cmd_args.extend(["--affix", ARGS.affix])
         grpkey_k = ARGS.affix
         if grpkey_k not in GRPKEY:
             GRPKEY[grpkey_k] = None
     if GRPKEY[grpkey_k] is None:
-        output = run(BS + cmd_args, "Retrieving grpkey")
+        output, err = run(BS + cmd_args, "Retrieving grpkey")
+        if err:
+            return status("error", output)
         GRPKEY[grpkey_k] = output
     return status("success", GRPKEY[grpkey_k])
-
-
-@app.get("/groupsig/schemes")
-def groupsig_schemes():
-    return status("success", GS_SCHEMES)
 
 
 @app.post("/groupsig/join")
 def groupsig_join():
     tokens = TOKENS["producers"]
     monitor = request.form.get("monitor")
-    if monitor:
+    is_monitor = False
+    if monitor is not None and monitor == "1":
         tokens = TOKENS["monitors"]
+        is_monitor = True
     crt_hash = request.environ.get("CERT_HASH")
     if crt_hash not in tokens:
         tokens[crt_hash] = False
@@ -153,8 +162,6 @@ def groupsig_join():
         return status("error", "Already registered")
     else:
         phase = request.form.get("phase")
-        if not phase:
-            return status("error", "Missing 'phase' in body")
         if not phase:
             return status("error", "Missing 'phase' in body")
         if int(phase):
@@ -171,13 +178,15 @@ def groupsig_join():
             "--message",
             f"{file_msg.name}",
         ]
-        if monitor:
+        if is_monitor:
             cmd_args.extend(["--affix", ARGS.affix])
-        output = run(
+        output, err = run(
             BS
             + cmd_args,
             f"Join phase {phase}",
         )
+        if err:
+            return status("error", output)
         if not output:
             msg = file_msg.read()
             if isinstance(msg, (bytes, bytearray)):
@@ -210,7 +219,7 @@ def groupsig_revoke():
         return status("error", "Missing 'signature' in body")
     file_tok = temp_w(token)
     file_sigt = temp_w(signaturet)
-    output = run(
+    output, err = run(
         BS
         + [
             "groupsig",
@@ -223,9 +232,11 @@ def groupsig_revoke():
         ],
         "Verifying signature",
     )
+    if err:
+        return status("error", output)
     if output == "0":
         file_sig = temp_w(signature)
-        output = run(
+        output, err = run(
             BS
             + [
                 "groupsig",
@@ -234,6 +245,8 @@ def groupsig_revoke():
             ],
             "Revoking identity",
         )
+        if err:
+            return status("error", output)
         if output == "1":
             NONCES[token] = True
             return status("success", "Identity revoked")
@@ -249,10 +262,12 @@ def groupsig_status():
     if not signature:
         return status("error", "Missing 'signature' in body")
     file_sig = temp_w(signature)
-    output = run(
+    output, err = run(
         BS + ["groupsig", "--status", f"{file_sig.name}"],
         "Checking signature status",
     )
+    if err:
+        return status("error", output)
     if output == "1":
         return status("success", "Identity revoked")
     else:

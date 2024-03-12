@@ -3,7 +3,12 @@ This repository contains the code needed to test the libgroupsig
 library inside the TEE.
 
 - [Setup docker container + QEMU](#setup-docker-container-qemu)
-- [Deployment](#deployment)
+    - [Automated process](#automated-process)
+    - [Manual process](#manual-process)
+- [API](#api)
+- [Clients](#clients)
+    - [Deployment](#deployment)
+    - [Docker](#docker)
 
 ## Setup docker container + QEMU
 ### Automated process
@@ -135,6 +140,10 @@ cd modules/libgroupsig/src/wrappers/python/ && python3 setup.py bdist_wheel && p
 make -C build -j image && make -C build -j qemu
 ```
 
+## API
+We have uploaded an updated version of the API using OpenAPI specification
+at https://app.swaggerhub.com/apis/schica/groupsig/1.0.0
+
 ## Clients
 The code of the clients (producers and monitors) can be found under
 `host/gicp_api`. There are 3 elements:
@@ -164,7 +173,7 @@ These commands serve as an example of deploying the group in QEMU
 ./gdemos.ke groupsig -s cpy06 -a _mon
 # Launch the server
 python3 gicp_api/server.py -C path/CERT -K path/KEY -c path/CHAIN
-# python3 gicp_api/server.py -C crypto/gms/usr1.crt -K crypto/gms/usr1.key -c path/chain.pem
+# python3 gicp_api/server.py -C crypto/gms/usr1.crt -K crypto/gms/usr1.key -c crypto/chain.pem
 ```
 > The machine/QEMU hosting the groups must have python3 and
 > python3-flask installed
@@ -173,27 +182,35 @@ These commands will be executed in another machine/QEMU by a service
 that need to sign assets/evidences/logs
 ```bash
 # Register in group (This must contact the server)
-python3 gicp_api/client.py -r
+python3 gicp_api/client.py -r -C path/CERT -K path/KEY -H localhost
+# python3 gicp_api/client.py -r -C crypto/producers/usr1.crt -K crypto/producers/usr1.key -H localhost
 # Sign asset (locally)
-python3 gicp_api/client.py -s -a path/ASSET -S path/SIGNATURE
+python3 gicp_api/client.py -s -a path/ASSET -S path/SIGNATURE -C path/CERT -K path/KEY -H localhost
+# python3 gicp_api/client.py -s -a asset -S sig -C crypto/producers/usr1.crt -K crypto/producers/usr1.key -H localhost
 # If needed, it's possible to verify a signature (locally)
-python3 gicp_api/client.py -v -a path/ASSET -S path/SIGNATURE
+python3 gicp_api/client.py -v -a path/ASSET -S path/SIGNATURE -C path/CERT -K path/KEY -H localhost
+# python3 gicp_api/client.py -v -a asset -S sig -C crypto/producers/usr1.crt -K crypto/producers/usr1.key -H localhost
 ```
 
 These commands will be executed in another machine/QEMU that need to
 revoke an identity if service/machine is compromised
 ```bash
 # Register in monitors group (This must contact the server)
-python3 gicp_api/client_mon.py -r
+python3 gicp_api/client_mon.py -r -C path/CERT -K path/KEY -H localhost
+# python3 gicp_api/client_mon.py -r -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
 # Revoke identity based on signature (This must contact the server)
-python3 gicp_api/client_mon.py -R -S path/SIGNATURE
+python3 gicp_api/client_mon.py -R -S path/SIGNATURE -C path/CERT -K path/KEY -H localhost
+# python3 gicp_api/client_mon.py -R -S sig -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
 # Check status of signature's identity (This must contact the server)
-python3 gicp_api/client_mon.py -t -S path/SIGNATURE
+python3 gicp_api/client_mon.py -t -S path/SIGNATURE -C path/CERT -K path/KEY -H localhost
+# python3 gicp_api/client_mon.py -t -S sig -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
 
 # If needed, the monitor can sign signatures issued by produers (locally)
-python3 gicp_api/client_mon.py -s -a path/SIGNATURE -S path/REVOKER_SIGNATURE
+python3 gicp_api/client_mon.py -s -a path/SIGNATURE -S path/MONITOR_SIGNATURE -C path/CERT -K path/KEY -H localhost
+# python3 gicp_api/client_mon.py -s -a sig -S sig_mon -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
 # The revoker can verify signatures issued by services (locally)
-python3 gicp_api/client_mon.py -v -a path/ASSET -S path/SIGNATURE
+python3 gicp_api/client_mon.py -v -a path/ASSET -S path/SIGNATURE -C path/CERT -K path/KEY -H localhost
+# python3 gicp_api/client_mon.py -v -a asset -S sig -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
 ```
 
 ### Docker
@@ -201,11 +218,11 @@ We have prepared docker containers with all the required dependencies to run the
 python libgroupsig wrapper
 
 Producers/Services client image
-```
-docker run --rm -it --network "host" -v $PWD/scripts/producers:/tmp/crypto tee-integration:client-prod -r -C /tmp/crypto/usr1.crt -K /tmp/crypto/usr1.key -H 127.0.0.1
+```bash
+docker run --rm -it --network "host" -v $PWD/scripts/producers:/tmp/crypto glcr.gicp.es/spirs/tee-integration:client-prod -r -C /tmp/crypto/usr1.crt -K /tmp/crypto/usr1.key -H 127.0.0.1
 ```
 
 Monitors/Revokers client image
-```
-docker run --rm -it --network "host" -v $PWD/scripts/monitors:/tmp/crypto tee-integration:client-mon -r -C /tmp/crypto/usr1.crt -K /tmp/crypto/usr1.key -H 127.0.0.1
+```bash
+docker run --rm -it --network "host" -v $PWD/scripts/monitors:/tmp/crypto glcr.gicp.es/spirs/tee-integration:client-mon -r -C /tmp/crypto/usr1.crt -K /tmp/crypto/usr1.key -H 127.0.0.1
 ```
