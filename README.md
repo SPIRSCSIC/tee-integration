@@ -213,6 +213,23 @@ python3 gicp_api/client_mon.py -v -a path/ASSET -S path/SIGNATURE -C path/CERT -
 # python3 gicp_api/client_mon.py -v -a asset -S sig -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
 ```
 
+We have prepared a small demo showing the functionality
+
+Configure the repository to compile the using SPIRS toolchain
+<a href="https://asciinema.gicp.es/a/echDqp0AkRYeFJab982UDSiBK" target="_blank">
+    <img src="https://asciinema.gicp.es/a/echDqp0AkRYeFJab982UDSiBK.svg"/>
+</a>
+
+Start containers and compile the groupsig package
+<a href="https://asciinema.gicp.es/a/FEmr9eOaABRejHbX4BIxOj3c7" target="_blank">
+    <img src="https://asciinema.gicp.es/a/FEmr9eOaABRejHbX4BIxOj3c7.svg"/>
+</a>
+
+Generate groups and start servers. Register entities and sign/verify/revoke/check-status
+<a href="https://asciinema.gicp.es/a/ScPazISYoF3ZeREG6SbXLxqzJ" target="_blank">
+    <img src="https://asciinema.gicp.es/a/ScPazISYoF3ZeREG6SbXLxqzJ.svg"/>
+</a>
+
 ### Docker
 We have prepared docker containers with all the required dependencies to run the
 python libgroupsig wrapper
