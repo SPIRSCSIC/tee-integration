@@ -18,7 +18,6 @@ from pygroupsig import (
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-
 SCHEMES = {
     "kty04": constants.KTY04_CODE,
     # "bbs04": constants.BBS04_CODE,
@@ -49,12 +48,73 @@ def decode(resp, msg):
 
 
 class Monitor:
-    def __init__(self, args):
-        self.args = args
-        self.url = f"https://{args.host}:{args.port}"
+    """
+    Groupsig auditor client
+
+    Given a signature group, this client is capable of resgistering a client,
+    signing an asset, verifying asset signature, verifying (monitor) signature of an asset,
+    revoking the identity linked to an asset, and checking the status of the identity linked to an asset
+
+    Usages:
+
+    REGISTER:
+       >>> mon = Monitor('localhost', '/path/to/cert', '/path/to/key')
+       >>> mon.register()
+       todo: what returns?
+
+    SIGN (requires an asset):
+        >>> mon.sign('/asset/to/sign')
+        todo: what returns if ok?
+       {
+         ...
+         "form": {
+           "key1": "value1",
+           "key2": "value2"
+         },
+         ...
+       }
+
+    VERIFY (requires a signed asset):
+        >>> mon.verify('/asset/to/verify')
+        todo:what returns if ok?
+
+    MONITOR VERIFICATION (requires a signed asset)
+        >>> mon.verify('/asset/to/verify', monitor=True)
+        todo: what returns if ok?
+
+    REVOKE IDENTITY (requires a signature)
+        >>> mon.revoke()
+        todo: what returns if ok?
+
+    CHECK IDENTITY STATUS (requires a signature)
+        >>> mon.status() # mon.status(signature='/path/to/sig') ??
+        todo: what returns if ok?
+
+    """
+
+    def __init__(self, host: str, cert: str, key: str, port: int = 5000, gkey: str = "gkey_mon",
+                 gkeyc: str = "gkey", mkey: str = "mkey_mon", **kwargs):
+        """
+        A user-created :class:`Monitor<Monitor>` object.
+        Args:
+            :param host: Group signature API host/IP
+            :param cert: Path to client certificate
+            :param key: Path to client certificate key
+            :param port: Path to group signature API port
+            :param gkey: Path to monitor's group key file
+            :param gkeyc: Path to group key file of the clients group
+            :param mkey: Path to member key file
+
+        """
+        self.args = argparse.Namespace(
+            gkey=Path(str(gkey)),
+            gkeyc=Path(str(gkeyc)),
+            mkey=Path(str(mkey))
+        )
+        self.url = f"https://{host}:{port}"
         self.sess = requests.Session()
         self.sess.verify = False
-        self.sess.cert = (args.cert, args.key)
+        self.sess.cert = (Path(str(cert)), Path(str(key)))
         self.code = None
         self.codec = None
         self.grpkey = None
@@ -113,20 +173,40 @@ class Monitor:
         else:
             logging.error("Already registered")
 
-    def sign(self):
+    def sign(self, asset: str, sigf: str = "sig"):
+        """
+
+        Args:
+            :param asset: Path to asset file
+            :param sigf: Path to signature file
+
+        Returns:
+
+        """
         if self.memkey is not None and self.grpkey is not None:
-            with self.args.asset.open("rb") as f:
+            with Path(str(asset)).open("rb") as f:
                 digest = hashlib.sha256(f.read()).hexdigest()
             sig = signature.signature_export(
                 groupsig.sign(digest, self.memkey, self.grpkey)
             )
-            with self.args.sig.open("w") as f:
+            # change self.args.sig
+            with Path(str(sigf)).open("w") as f:
                 f.write(sig)
             return sig
         else:
             logging.error("Missing memkey or grpkey")
 
-    def verify(self, monitor=False):
+    def verify(self, asset: str, sigf: str = "sig", monitor=False):
+        """
+
+        Args:
+            :param asset: Path to asset file
+            :param sigf: Path to signature file
+            :param monitor: if True performs verification in monitor mode. 'Normal' mode otherwise
+
+        Returns:
+
+        """
         # I don't think we should implement verification for monitor
         # but whatever
         code = self.codec
@@ -135,9 +215,10 @@ class Monitor:
             code = self.code
             grpkey = self.grpkey
         if grpkey is not None:
-            with self.args.asset.open("rb") as f:
+            with Path(str(asset)).open("rb") as f:
                 digest = hashlib.sha256(f.read()).hexdigest()
-            with self.args.sig.open() as f:
+            # change self.args.sig
+            with Path(str(sigf)).open() as f:
                 sig = signature.signature_import(code, f.read())
             ver = groupsig.verify(sig, digest, grpkey)
             logging.info(f"Signature verified: {ver}")
@@ -145,8 +226,17 @@ class Monitor:
         else:
             logging.error("Missing grpkey")
 
-    def revoke(self):
-        with self.args.sig.open() as f:
+    def revoke(self, sigf: str = "sig"):
+        """
+
+        Args:
+            :param sigf: Path to signature file
+
+        Returns:
+
+        """
+        # change self.args.sig
+        with Path(str(sigf)).open() as f:
             sig = f.read()
         res = self.sess.get(
             f"{self.url}/groupsig/revoke"
@@ -165,8 +255,17 @@ class Monitor:
         logging.info(data["msg"])
         return False if "not" in data["msg"] else True
 
-    def status(self):
-        with self.args.sig.open() as f:
+    def status(self, sigf: str = "sig"):
+        """
+
+        Args:
+            :param sigf: Path to signature file
+
+        Returns:
+
+        """
+        # change self.args.sig
+        with Path(str(sigf)).open() as f:
             sig = f.read()
         res = self.sess.post(
             f"{self.url}/groupsig/status", data={"signature": sig}
@@ -237,7 +336,7 @@ class Monitor:
                     )
 
 
-def parse_args():
+def _parse_args():
     parser = argparse.ArgumentParser(
         description="Groupsig auditor client"
     )
@@ -341,29 +440,29 @@ def parse_args():
     parser.add_argument(
         "--asset", "-a", metavar="PATH", type=Path, help="Asset file"
     )
-    args = parser.parse_args()
-    if (args.sign or args.verify) and args.asset is None:
+    _args = parser.parse_args()
+    if (_args.sign or _args.verify) and _args.asset is None:
         parser.error(
             "The --asset/-a argument is required when "
             "using --sign/-s or --verify/-v"
         )
-    return args
+    return _args
 
 
 def main(args):
-    with Monitor(args) as mon:
+    with Monitor(**args.__dict__) as mon:
         if args.register:
             print(mon.register())
         if args.sign:
-            print(mon.sign())
+            print(mon.sign(args.asset))
         if args.verify:
-            print(mon.verify())
+            print(mon.verify(args.asset))
         if args.verifym:
-            print(mon.verify(True))
+            print(mon.verify(args.asset, monitor=True))
         if args.revoke:
-            print(mon.revoke())
+            print(mon.revoke(args.sig))
         if args.status:
-            print(mon.status())
+            print(mon.status(args.sig))
 
 
 if __name__ == "__main__":
@@ -371,5 +470,4 @@ if __name__ == "__main__":
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
     )
-    args = parse_args()
-    main(args)
+    main(_parse_args())
