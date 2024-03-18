@@ -2,7 +2,7 @@
 This repository contains the code needed to test the libgroupsig
 library inside the TEE.
 
-- [Setup docker container + QEMU](#setup-docker-container-qemu)
+- [Setup docker container + QEMU](#setup-docker-container--qemu)
     - [Automated process](#automated-process)
     - [Manual process](#manual-process)
 - [API](#api)
@@ -159,7 +159,8 @@ Clients must send their certificate if they want to register in a group, that
 certificate will be validated and, if everything is correct and the entity has the permissions,
 the registration will be completed.
 
-> A script named `test.sh` has been created showing a basic demo of the clients.
+> Two scripts, named `test.sh` and `test.py`, have been included to show the basic usage of the clients, 
+> as CLI and as a library respectively.
 
 ### Deployment
 It's necessary to create the crypto material for each group. The crypto material will be
@@ -178,8 +179,13 @@ python3 gicp_api/server.py -C path/CERT -K path/KEY -c path/CHAIN
 > The machine/QEMU hosting the groups must have python3 and
 > python3-flask installed
 
+Now, regarding the clients, there are two ways to execute them.
+
+#### Option 1: Command line interface (CLI)
+
 These commands will be executed in another machine/QEMU by a service
-that need to sign assets/evidences/logs
+that need to sign assets/evidences/logs.
+
 ```bash
 # Register in group (This must contact the server)
 python3 gicp_api/client.py -r -C path/CERT -K path/KEY -H localhost
@@ -193,7 +199,8 @@ python3 gicp_api/client.py -v -a path/ASSET -S path/SIGNATURE -C path/CERT -K pa
 ```
 
 These commands will be executed in another machine/QEMU that need to
-revoke an identity if service/machine is compromised
+revoke an identity if service/machine is compromised.
+
 ```bash
 # Register in monitors group (This must contact the server)
 python3 gicp_api/client_mon.py -r -C path/CERT -K path/KEY -H localhost
@@ -205,12 +212,59 @@ python3 gicp_api/client_mon.py -R -S path/SIGNATURE -C path/CERT -K path/KEY -H 
 python3 gicp_api/client_mon.py -t -S path/SIGNATURE -C path/CERT -K path/KEY -H localhost
 # python3 gicp_api/client_mon.py -t -S sig -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
 
-# If needed, the monitor can sign signatures issued by produers (locally)
+# If needed, the monitor can sign signatures issued by producers (locally)
 python3 gicp_api/client_mon.py -s -a path/SIGNATURE -S path/MONITOR_SIGNATURE -C path/CERT -K path/KEY -H localhost
 # python3 gicp_api/client_mon.py -s -a sig -S sig_mon -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
 # The revoker can verify signatures issued by services (locally)
 python3 gicp_api/client_mon.py -v -a path/ASSET -S path/SIGNATURE -C path/CERT -K path/KEY -H localhost
 # python3 gicp_api/client_mon.py -v -a asset -S sig -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
+```
+
+#### Option 2: Python library
+
+These commands will be executed in another machine/QEMU by a service
+that need to sign assets/evidences/logs.
+
+```python
+import host.gicp_api.client as client
+
+PCRT = "crypto/producers/usr1.crt"
+PKEY = "crypto/producers/usr1.key"
+
+# Initialize a Producer (requires an active server, a public certificate and its private key)
+prod = client.Producer('localhost', PCRT, PKEY)
+# Register in monitors group (This must contact the server)
+prod.register()
+# Sign asset (locally) and saves the signature in file "sig" (default behaviour)
+prod.sign(asset='gkey')
+# Sign asset (locally) and save the signature in a custom file 
+prod.sign(asset='gkey', sigf='output/file')
+# If needed, it's possible to verify a signature (locally)
+# If no signature file is specified, it will look for the default signature file "sig"
+prod.verify(asset='gkey', sigf='output/file')
+```
+
+These commands will be executed in another machine/QEMU that need to
+revoke an identity if service/machine is compromised.
+
+```python
+import host.gicp_api.client_mon as client_mon
+
+MCRT = "crypto/monitors/usr1.crt"
+MKEY = "crypto/monitors/usr1.key"
+
+# Initialize a Producer (requires an active server, a public certificate and its private key)
+mon = client_mon.Monitor('localhost', MCRT, MKEY)
+# Register in monitors group (This must contact the server)
+mon.register()
+# Revoke identity based on signature (This must contact the server)
+mon.revoke(sigf='output/sigfile')
+# Check status of signature's identity (This must contact the server)
+mon.status(sigf='output/sigfile')
+# If needed, the monitor can sign signatures issued by producers (locally)
+mon.sign(asset='output/asset', sigf='sig_mon')
+# The revoker can verify signatures issued by services (locally)
+mon.verify(asset='output/asset', sigf='output/sigfile')
 ```
 
 We have prepared a small demo showing the functionality

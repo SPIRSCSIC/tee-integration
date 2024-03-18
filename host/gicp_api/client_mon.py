@@ -173,15 +173,15 @@ class Monitor:
         else:
             logging.error("Already registered")
 
-    def sign(self, asset: str, sigf: str = "sig"):
+    def sign(self, asset: str, sigf: str = "sig") -> None:
         """
+        Signs an asset and saves the signature in a file
 
         Args:
-            :param asset: Path to asset file
-            :param sigf: Path to signature file
+            :param asset: Path to the asset to be signed
+            :param sigf: Path to file where the generated signature will be saved
 
-        Returns:
-
+        Returns: None
         """
         if self.memkey is not None and self.grpkey is not None:
             with Path(str(asset)).open("rb") as f:
