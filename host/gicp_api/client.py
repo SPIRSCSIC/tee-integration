@@ -18,7 +18,6 @@ from pygroupsig import (
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-
 SCHEMES = {
     "kty04": constants.KTY04_CODE,
     # "bbs04": constants.BBS04_CODE,
@@ -49,12 +48,60 @@ def decode(resp, msg):
 
 
 class Producer:
-    def __init__(self, args):
-        self.args = args
-        self.url = f"https://{args.host}:{args.port}"
+    """
+    Groupsig client
+
+    Given a signature group this client is able to
+    register, sign, or verify signatures, whithin the signature group
+
+    Usages:
+
+    REGISTER:
+       >>> prod = Producer('localhost', '/path/to/cert', '/path/to/key')
+       >>> prod.register()
+       todo: what returns?
+
+    SIGN (requires an asset):
+        >>> prod.sign('/asset/to/sign')
+        todo: what returns if ok?
+       {
+         ...
+         "form": {
+           "key1": "value1",
+           "key2": "value2"
+         },
+         ...
+       }
+
+    VERIFY (requires a signed asset):
+        >>> prod.verify('/asset/to/verify')
+        todo:what returns if ok?
+    """
+
+    def __init__(self, host: str, cert: str, key: str, port: int = 5000, gkey: str = "gkey",
+                 mkey: str = "mkey", sig: str = "sig", **kwargs):
+        """
+            A user-created :class:`Producer<Producer>` object.
+            Args:
+                :param host: Group signature API host/IP
+                :param cert: Path to client certificate
+                :param key: Path to client certificate key
+                :param port: Path to group signature API port
+                :param gkey: Path to group key file
+                :param mkey: Path to member key file
+                :param sig: Path to signature file
+
+            """
+
+        self.args = argparse.Namespace(
+            gkey=Path(str(gkey)),
+            mkey=Path(str(mkey)),
+            sig=Path(str(sig))
+        )
+        self.url = f"https://{host}:{port}"
         self.sess = requests.Session()
         self.sess.verify = False
-        self.sess.cert = (args.cert, args.key)
+        self.sess.cert = (Path(str(cert)), Path(str(key)))
         self.code = None
         self.grpkey = None
         self.memkey = None
@@ -110,24 +157,43 @@ class Producer:
         else:
             logging.error("Already registered")
 
-    def sign(self):
+    def sign(self, asset: str, sigf: str = "sig") -> None:
+        """
+        Signs an asset and saves the signature in a file
+        Args:
+            :param asset: Path to the asset to be signed
+            :param sigf: Path to file where the generated signature will be saved
+
+        Returns: None
+        """
         if self.memkey is not None and self.grpkey is not None:
-            with self.args.asset.open("rb") as f:
+            with Path(str(asset)).open("rb") as f:
                 digest = hashlib.sha256(f.read()).hexdigest()
             sig = signature.signature_export(
                 groupsig.sign(digest, self.memkey, self.grpkey)
             )
-            with self.args.sig.open("w") as f:
+            # with self.args.sig.open("w") as f:
+            with Path(str(sigf)).open("w") as f:
                 f.write(sig)
             return sig
         else:
             logging.error("Missing memkey or grpkey")
 
-    def verify(self):
+    def verify(self, asset: str, sigf: str = "sig"):
+        """
+
+        Args:
+            :param asset: Path to asset file
+            :param sigf: Path to signature file
+
+        Returns:
+
+        """
         if self.grpkey is not None:
-            with self.args.asset.open("rb") as f:
+            with Path(str(asset)).open("rb") as f:
                 digest = hashlib.sha256(f.read()).hexdigest()
-            with self.args.sig.open() as f:
+            # change self.args.sig
+            with Path(str(sigf)).open() as f:
                 sig = signature.signature_import(self.code, f.read())
             ver = groupsig.verify(sig, digest, self.grpkey)
             logging.info(f"Signature verified: {ver}")
@@ -173,7 +239,7 @@ class Producer:
                     )
 
 
-def parse_args():
+def _parse_args():
     parser = argparse.ArgumentParser(description="Groupsig client")
     func = parser.add_mutually_exclusive_group(required=True)
     func.add_argument(
@@ -191,6 +257,7 @@ def parse_args():
         action="store_true",
         help="Verify signature, i.e. issued by a group",
     )
+
     parser.add_argument(
         "--host",
         "-H",
@@ -252,23 +319,23 @@ def parse_args():
     parser.add_argument(
         "--asset", "-a", metavar="PATH", type=Path, help="Asset file"
     )
-    args = parser.parse_args()
-    if (args.sign or args.verify) and args.asset is None:
+    _args = parser.parse_args()
+    if (_args.sign or _args.verify) and _args.asset is None:
         parser.error(
             "The --asset/-a argument is required when "
             "using --sign/-s or --verify/-v"
         )
-    return args
+    return _args
 
 
 def main(args):
-    with Producer(args) as prod:
+    with Producer(**args.__dict__) as prod:
         if args.register:
             print(prod.register())
         if args.sign:
-            print(prod.sign())
+            print(prod.sign(args.asset, sigf=args.sig))
         if args.verify:
-            print(prod.verify())
+            print(prod.verify(args.asset, sigf=args.sig))
 
 
 if __name__ == "__main__":
@@ -276,5 +343,4 @@ if __name__ == "__main__":
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
     )
-    args = parse_args()
-    main(args)
+    main(_parse_args())
