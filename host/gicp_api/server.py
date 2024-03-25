@@ -17,6 +17,7 @@ from werkzeug.exceptions import BadRequestKeyError
 
 A_SCHEMES = ["mondrian"]
 BS = ["./gdemos.ke"]
+FINAL_PATH = "/root/.last"
 OK = re.compile(rb"Package\n(.*)", re.S)
 ERR = re.compile(rb"(.*?)\[host\]", re.S)
 TOKENS = {"producers": {}, "monitors": {}}
@@ -193,9 +194,12 @@ def groupsig_join():
                 msg = msg.decode()
         else:
             msg = output
-        if int(phase) in [1, 2]:
+        final = Path(FINAL_PATH)
+        if final.exists():
             tokens[crt_hash] = True
             save_tokens()
+            print(f"found {FINAL_PATH}, removing!")
+            final.unlink()
         return status("success", msg)
 
 

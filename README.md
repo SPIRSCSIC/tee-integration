@@ -2,47 +2,49 @@
 This repository contains the code needed to test the libgroupsig
 library inside the TEE.
 
-- [Setup docker container + QEMU](#setup-docker-container--qemu)
+- [Setup docker container + QEMU](#setup-docker-container-qemu)
+    - [Preconfiguration](#preconfiguration)
     - [Automated process](#automated-process)
     - [Manual process](#manual-process)
 - [API](#api)
 - [Clients](#clients)
     - [Deployment](#deployment)
+      - [Option 1: Command line interface (CLI)](#option-1-command-line-interface-cli)
+      - [Option 2: Python library](#option-2-python-library)
     - [Docker](#docker)
 
 ## Setup docker container + QEMU
-### Automated process
-In order to compile the project, first run the script `setup.sh`
-
-```bash
-scripts/setup.sh
-```
-
-If you have not compiled the `spirs_keystone:22.04` container yet, you need
-to create a file named `token` with your gitlab credentials in the directory `spirs_tee_sdk/docker`,
-use the following the format
+### Preconfiguration
+You need to have the container generated from [spirs_tee_sdk](https://gitlab.com/spirs_eu/spirs_tee_sdk)
+(named as `spirs_keystone:22.04`).
+If you have not compiled it yet, create a file named `token` with your gitlab credentials
+in the directory `spirs_tee_sdk/docker`, using the following the format
 
 ```
 username=your_username
 password=your_password_or_token
 ```
 
-Then compile the container (it will take around 15-20min)
+Then compile the container (it will take around 15~20min)
 
 ```bash
 cd spirs_tee_sdk
 DOCKER_BUILDKIT=1 docker build --no-cache --secret=id=gitlab,src=$PWD/docker/token -f docker/Dockerfile -t spirs_keystone:22.04 .
 ```
 
-After you have compiled the container, run the script `container.sh`
+### Automated process
+In order to compile the project, first run the script `setup.sh`
+```bash
+scripts/setup.sh
+```
 
+Then run the script `container.sh`
 ```bash
 cd .. # if you are inside spirs_tee_sdk directory
 scripts/container.sh
 ```
 
 Finally connect to `spirs` container and run the command to start qemu
-
 ```bash
 docker exec -it spirs bash
 cd /spirs_tee_sdk
@@ -50,11 +52,10 @@ make -C build -j qemu
 ```
 
 ### Manual process
-The first step is to clone the
+The first step is to clone the dependencies,
 [libgroupsig](https://gitlab.gicp.es/spirs/libgroupsig.git) and
-[mondrian](https://gitlab.gicp.es/spirs/mondrian.git) repositories
+[mondrian](https://gitlab.gicp.es/spirs/mondrian.git)
 inside [spirs_tee_sdk](https://gitlab.com/spirs_eu/spirs_tee_sdk) repository
-
 ```bash
 git clone --depth 1 https://gitlab.com/spirs_eu/spirs_tee_sdk
 git clone --depth 1 https://gitlab.gicp.es/spirs/libgroupsig.git spirs_tee_sdk/modules/libgroupsig
@@ -62,7 +63,6 @@ git clone --depth 1 https://gitlab.gicp.es/spirs/mondrian.git spirs_tee_sdk/modu
 ```
 
 Patch CMakeLists.txt files from the sdk to include our changes
-
 ```bash
 patch -u spirs_tee_sdk/enclave/CMakeLists.txt -i patches/cmakelistsenclave.patch
 patch -u spirs_tee_sdk/host/CMakeLists.txt -i patches/cmakelistshost.patch
@@ -72,7 +72,6 @@ patch -u spirs_tee_sdk/modules/libgroupsig/src/wrappers/python/pygroupsig/libgro
 ```
 
 Copy the required files to compile our project
-
 ```bash
 cp -r modules/libgroupsig/tee spirs_tee_sdk/modules/libgroupsig
 cp -r modules/mondrian/tee spirs_tee_sdk/modules/mondrian
@@ -83,30 +82,13 @@ cp enclave/tee_internal_api/include/tee_ta_api_gicp.h spirs_tee_sdk/enclave/tee_
 cp -r host/gicp_api host/host_gicp.c spirs_tee_sdk/host/
 ```
 
-Compile the container following the instruction in `spirs_tee_sdk/docker`
-
-```bash
-cd spirs_tee_sdk
-DOCKER_BUILDKIT=1 docker build --no-cache --secret=id=gitlab,src=$PWD/docker/token -f docker/Dockerfile -t spirs_keystone:22.04 .
-```
-> Remember that If you have not compiled the `spirs_keystone:22.04` container yet, you need
-> to create a file named `token` with your gitlab credentials in the directory `spirs_tee_sdk/docker`,
-> use the following the format
-> ```
-> username=your_username
-> password=your_password_or_token
-> ```
-
-Launch the container in detached mode
-
+Launch the `spirs_keystone:22.04 `container in detached mode
 ```bash
 docker run --name spirs -it --rm -d -v $PWD/spirs_tee_sdk:/spirs_tee_sdk spirs_keystone:22.04
 ```
-
 > Change the -v path accordingly so `spirs_tee_sdk` directory is mounted inside the container
 
-Patch the buildroot configuration file to install flask, and the run-qemu script
-
+Patch the buildroot `.config` file to install flask and `run-qemu.sh.in` script template
 ```bash
 docker cp spirs:/keystone/build/buildroot.build/.config .
 patch -u .config -i patches/flaskinstall.patch
@@ -121,14 +103,12 @@ patch -u run-qemu.sh.in -i patches/flaskport.patch
 docker cp run-qemu.sh.in spirs:/keystone/scripts/
 ```
 
-Compile buildroot with new changes
-
+Compile buildroot with new the changes
 ```bash
 docker exec spirs make -C build/buildroot.build python3-dirclean all
 ```
 
-Connect to container and compile the project
-
+Connect to the container and compile the project
 ```bash
 docker exec -it spirs bash
 cd /spirs_tee_sdk
@@ -141,29 +121,29 @@ make -C build -j image && make -C build -j qemu
 ```
 
 ## API
-We have uploaded an updated version of the API using OpenAPI specification
+We have uploaded the API specification using the OpenAPI v3 standard. Check it
 at https://app.swaggerhub.com/apis/schica/groupsig/1.0.0
 
 ## Clients
 The code of the clients (producers and monitors) can be found under
 `host/gicp_api`. There are 3 elements:
-- **server.py**: This code runs in the same machine as the TEE. It'll execute the commands
+- `server.py`: This code runs in the same machine as the TEE. It'll execute the commands
   through `gdemos.ke`
-- **client.py**: This is the client used by every entity that is in charge of signing assets.
-- **client_mon.py**: This is the client used by entities (monitors) that have the permission to revoke signature identities.
+- `client.py`: This is the client used by every entity that is in charge of signing assets.
+- `client_mon.py`: This is the client used by entities (monitors) that have the permission to revoke signature identities.
 
 The messages between server and clients must be mutually authenticated. The server must have
 access to the CA chain in order to validate client certificates.
 > The mutual authentication step can be removed if that is not required.
+
 Clients must send their certificate if they want to register in a group, that
 certificate will be validated and, if everything is correct and the entity has the permissions,
 the registration will be completed.
-
-> Two scripts, named `test.sh` and `test.py`, have been included to show the basic usage of the clients, 
+> Two scripts, named `test.sh` and `test.py`, have been included to show the basic usage of the clients,
 > as CLI and as a library respectively.
 
 ### Deployment
-It's necessary to create the crypto material for each group. The crypto material will be
+It is necessary to create the crypto material for each group. The crypto material will be
 located in the machine/QEMU in charge of the group (group manager).
 
 These commands serve as an example of deploying the group in QEMU
@@ -182,9 +162,8 @@ python3 gicp_api/server.py -C path/CERT -K path/KEY -c path/CHAIN
 Now, regarding the clients, there are two ways to execute them.
 
 #### Option 1: Command line interface (CLI)
-
 These commands will be executed in another machine/QEMU by a service
-that need to sign assets/evidences/logs.
+that needs to sign assets/evidences/logs.
 
 ```bash
 # Register in group (This must contact the server)
@@ -198,7 +177,7 @@ python3 gicp_api/client.py -v -a path/ASSET -S path/SIGNATURE -C path/CERT -K pa
 # python3 gicp_api/client.py -v -a asset -S sig -C crypto/producers/usr1.crt -K crypto/producers/usr1.key -H localhost
 ```
 
-These commands will be executed in another machine/QEMU that need to
+These commands will be executed in another machine/QEMU that needs to
 revoke an identity if service/machine is compromised.
 
 ```bash
@@ -220,53 +199,6 @@ python3 gicp_api/client_mon.py -v -a path/ASSET -S path/SIGNATURE -C path/CERT -
 # python3 gicp_api/client_mon.py -v -a asset -S sig -C crypto/monitors/usr1.crt -K crypto/monitors/usr1.key -H localhost
 ```
 
-#### Option 2: Python library
-
-These commands will be executed in another machine/QEMU by a service
-that need to sign assets/evidences/logs.
-
-```python
-import host.gicp_api.client as client
-
-PCRT = "crypto/producers/usr1.crt"
-PKEY = "crypto/producers/usr1.key"
-
-# Initialize a Producer (requires an active server, a public certificate and its private key)
-prod = client.Producer('localhost', PCRT, PKEY)
-# Register in monitors group (This must contact the server)
-prod.register()
-# Sign asset (locally) and saves the signature in file "sig" (default behaviour)
-prod.sign(asset='gkey')
-# Sign asset (locally) and save the signature in a custom file 
-prod.sign(asset='gkey', sigf='output/file')
-# If needed, it's possible to verify a signature (locally)
-# If no signature file is specified, it will look for the default signature file "sig"
-prod.verify(asset='gkey', sigf='output/file')
-```
-
-These commands will be executed in another machine/QEMU that need to
-revoke an identity if service/machine is compromised.
-
-```python
-import host.gicp_api.client_mon as client_mon
-
-MCRT = "crypto/monitors/usr1.crt"
-MKEY = "crypto/monitors/usr1.key"
-
-# Initialize a Producer (requires an active server, a public certificate and its private key)
-mon = client_mon.Monitor('localhost', MCRT, MKEY)
-# Register in monitors group (This must contact the server)
-mon.register()
-# Revoke identity based on signature (This must contact the server)
-mon.revoke(sigf='output/sigfile')
-# Check status of signature's identity (This must contact the server)
-mon.status(sigf='output/sigfile')
-# If needed, the monitor can sign signatures issued by producers (locally)
-mon.sign(asset='output/asset', sigf='sig_mon')
-# The revoker can verify signatures issued by services (locally)
-mon.verify(asset='output/asset', sigf='output/sigfile')
-```
-
 We have prepared a small demo showing the functionality
 
 Configure the repository to compile the using SPIRS toolchain
@@ -283,6 +215,52 @@ Generate groups and start servers. Register entities and sign/verify/revoke/chec
 <a href="https://asciinema.gicp.es/a/ScPazISYoF3ZeREG6SbXLxqzJ" target="_blank">
     <img src="https://asciinema.gicp.es/a/ScPazISYoF3ZeREG6SbXLxqzJ.svg"/>
 </a>
+
+#### Option 2: Python library
+These commands will be executed in another machine/QEMU by a service
+that needs to sign assets/evidences/logs.
+
+```python
+import host.gicp_api.client as client
+
+PCRT = "crypto/producers/usr1.crt"
+PKEY = "crypto/producers/usr1.key"
+
+# Initialize a Producer (requires an active server, a public certificate and its private key)
+prod = client.Producer('localhost', PCRT, PKEY)
+# Register in monitors group (This must contact the server)
+prod.register()
+# Sign asset (locally) and saves the signature in file "sig" (default behaviour)
+prod.sign(asset='gkey')
+# Sign asset (locally) and save the signature in a custom file
+prod.sign(asset='gkey', sig='output/file')
+# If needed, it's possible to verify a signature (locally)
+# If no signature file is specified, it will look for the default signature file "sig"
+prod.verify(asset='gkey', sig='output/file')
+```
+
+These commands will be executed in another machine/QEMU that need to
+revoke an identity if service/machine is compromised.
+
+```python
+import host.gicp_api.client_mon as client_mon
+
+MCRT = "../crypto/monitors/usr1.crt"
+MKEY = "../crypto/monitors/usr1.key"
+
+# Initialize a Producer (requires an active server, a public certificate and its private key)
+mon = client_mon.Monitor('localhost', MCRT, MKEY)
+# Register in monitors group (This must contact the server)
+mon.register()
+# Revoke identity based on signature (This must contact the server)
+mon.revoke(sig='output/sigfile')
+# Check status of signature's identity (This must contact the server)
+mon.status(sig='output/sigfile')
+# If needed, the monitor can sign signatures issued by producers (locally)
+mon.sign(asset='output/asset', sig='sig_mon')
+# The revoker can verify signatures issued by services (locally)
+mon.verify(asset='output/asset', sig='output/sigfile')
+```
 
 ### Docker
 We have prepared docker containers with all the required dependencies to run the

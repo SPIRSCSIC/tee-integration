@@ -25,7 +25,9 @@ char GML[1024];
 char CRL[1024];
 char *SIG_PATH = NULL;
 char *MSG_PATH = NULL;
-char *SCHEME = NULL;
+char *FINAL_PATH = "/root/.last";
+char SCHEME[10];
+groupsig_t *GSIG = NULL;
 int PHASE = -1;
 int CODE = -1;
 int REV = 0;
@@ -90,49 +92,23 @@ void check_digit(char* str, char* msg) {
 }
 
 int valid_schemes() {
-  if (strcmp(SCHEME, "ps16")
-      && strcmp(SCHEME, "kty04")
-      && strcmp(SCHEME, "cpy06"))
+  if (!strcmp(SCHEME, "dl21") || !strcmp(SCHEME, "dl21seq"))
     return 0;
   return 1;
 }
 
-int crl_schemes() {
-  if (CODE == GROUPSIG_KTY04_CODE || CODE == GROUPSIG_CPY06_CODE)
-    return 1;
-  return 0;
-}
-
-void code_from_scheme() {
-  if (!strcmp(SCHEME, "ps16"))
-    CODE = GROUPSIG_PS16_CODE;
-  else if (!strcmp(SCHEME, "cpy06"))
-    CODE = GROUPSIG_CPY06_CODE;
-  else if (!strcmp(SCHEME, "kty04"))
-    CODE = GROUPSIG_KTY04_CODE;
-}
-
-void scheme_from_code() {
-  if (CODE == GROUPSIG_PS16_CODE) {
-    SCHEME = "ps16";
-  } else if (CODE == GROUPSIG_CPY06_CODE) {
-    SCHEME = "cpy06";
-  } else if (CODE == GROUPSIG_KTY04_CODE) {
-    SCHEME = "kty04";
-  } else {
+void metadata_from_code() {
+  GSIG = groupsig_get_groupsig_from_code(CODE);
+  if (!GSIG) {
     fprintf(stderr, "Error: Could not detect scheme from code\n");
     exit(1);
   }
 }
 
-
-// bbs04, kty04, cpy06
-int twophase_schemes() {
-  if (!strcmp(SCHEME, "kty04") || !strcmp(SCHEME, "cpy06"))
-    return 1;
-  return 0;
+void scheme_from_code() {
+  strcpy(SCHEME, GSIG->desc->name);
+  for (char *p = SCHEME; *p; ++p) *p = tolower(*p);
 }
-
 
 void print_data(void *data, int type) {
   char *msg1 = "grpkey_print";
@@ -248,6 +224,7 @@ void load_data(void **data, int type) {
   byte_t *dec_buff = base64_decode(enc, &dec_len);
   if (CODE == -1) {
     CODE = dec_buff[0];
+    metadata_from_code();
     scheme_from_code();
     int rc = 255;
     rc = groupsig_init(CODE, time(NULL));
@@ -266,17 +243,50 @@ void load_data(void **data, int type) {
 void join(message_t *msg,
           groupsig_key_t *grpkey, groupsig_key_t *mgrkey,
           gml_t *gml) {
-  message_t *msg_out = message_init();
   int rc = 255;
-  if (!twophase_schemes()) {
-    if (PHASE != 0 && PHASE != 2) {
-      fprintf(stderr, "Error: Only phases 0 and 2 allowed\n");
+  uint8_t start, seq;
+  rc = GSIG->get_joinstart(&start);
+  check_rc(rc, "joinstart");
+  rc = GSIG->get_joinseq(&seq);
+  check_rc(rc, "joinseq");
+  int n_phases = (seq - start) / 2 + 1;
+  int *phases = malloc(sizeof(int) * n_phases);
+  if (!phases) {
+    fprintf(stderr, "Error: Memory allocation failed for phases\n");
+    exit(1);
+  }
+  int correct = 0;
+  for(int i=0; i<n_phases; i++) {
+    phases[i] = start + i * 2;
+    if (PHASE == phases[i])
+      correct = 1;
+  }
+  if (!correct) {
+    fprintf(stderr, "Error: Only phase(s) [");
+    for(int i=0; i<n_phases-1; i++) {
+      fprintf(stderr, "%d, ", phases[i]);
     }
+    fprintf(stderr, "%d] allowed\n", phases[n_phases-1]);
+    exit(1);
+  }
+  message_t *msg_out = message_init();
+  if (start == 1 && seq == 1) { // kty04
     rc = groupsig_join_mgr(&msg_out, gml, mgrkey, PHASE, msg, grpkey);
-    if (PHASE == 0)
-      check_rc(rc, "join_mgr_0");
-    else
-      check_rc(rc, "join_mgr_2");
+    check_rc(rc, "join_mgr");
+    groupsig_key_t *memkey = groupsig_mem_key_init(grpkey->scheme);
+    memkey = groupsig_mem_key_import(CODE, msg_out->bytes, msg_out->length);
+    print_data(memkey, 2);
+    groupsig_mem_key_free(memkey); memkey = NULL;
+    save_data(gml, 3);
+    FILE *fp = fopen(FINAL_PATH, "w");
+    if (fp == NULL) {
+      fprintf(stderr, "Error: File %s cannot be written\n", FINAL_PATH);
+      exit(1);
+    }
+    fclose(fp);
+  } else {
+    rc = groupsig_join_mgr(&msg_out, gml, mgrkey, PHASE, msg, grpkey);
+    check_rc(rc, "join_mgr");
     char* out = message_to_base64(msg_out);
     FILE *fp = fopen(MSG_PATH, "w");
     if (fp != NULL) {
@@ -286,20 +296,16 @@ void join(message_t *msg,
       fprintf(stderr, "Error: File %s cannot be written\n", MSG_PATH);
       exit(1);
     }
-    if (PHASE == 2)
+    if (PHASE == phases[n_phases-1]) {
       save_data(gml, 3);
-    free(out);
-  } else {
-    if (PHASE != 1) {
-      fprintf(stderr, "Error: Only phase 1 allowed\n");
+      FILE *fp = fopen(FINAL_PATH, "w");
+      if (fp == NULL) {
+        fprintf(stderr, "Error: File %s cannot be written\n", FINAL_PATH);
+        exit(1);
+      }
+      fclose(fp);
     }
-    rc = groupsig_join_mgr(&msg_out, gml, mgrkey, PHASE, msg, grpkey);
-    check_rc(rc, "join_mgr_1");
-    groupsig_key_t *memkey = groupsig_mem_key_init(grpkey->scheme);
-    memkey = groupsig_mem_key_import(CODE, msg_out->bytes, msg_out->length);
-    print_data(memkey, 2);
-    groupsig_mem_key_free(memkey); memkey = NULL;
-    save_data(gml, 3);
+    free(out);
   }
   message_free(msg_out); msg_out = NULL;
 }
@@ -356,15 +362,17 @@ void groupsig_mode() {
   crl_t *crl;
   if (!file_readable(GRPKEY) || !file_readable(MGRKEY)
       || !file_readable(GML)) {
-    if (!SCHEME) {
+    if (SCHEME[0] == '\0') {
       fprintf(stderr, "Error: scheme missing, allowed values are ps16, gl19 and kty04\n");
       exit(1);
     } else if (!valid_schemes()) {
       fprintf(stderr, "Error: invalid scheme, allowed values are ps16, gl19 and kty04\n");
       exit(1);
     } else {
-      code_from_scheme();
       int rc = 255;
+      rc = groupsig_get_code_from_str(&CODE, SCHEME);
+      check_rc(rc, "get_code_from_str");
+      metadata_from_code();
       rc = groupsig_init(CODE, time(NULL));
       check_rc(rc, "init");
     }
@@ -374,7 +382,7 @@ void groupsig_mode() {
     check_ptr(mgrkey, "mgrkey");
     gml = gml_init(CODE);
     check_ptr(gml, "gml");
-    if (crl_schemes()) {
+    if (GSIG->desc->has_crl) {
       crl = crl_init(CODE);
       check_ptr(crl, "crl");
     }
@@ -384,7 +392,7 @@ void groupsig_mode() {
     save_data(grpkey, 0);
     save_data(mgrkey, 1);
     save_data(gml, 3);
-    if (crl_schemes()) {
+    if (GSIG->desc->has_crl) {
       rc = crl_export(crl, CRL, CRL_FILE);
       check_rc(rc, "crl");
     }
@@ -392,7 +400,7 @@ void groupsig_mode() {
     load_data(&grpkey, 0);
     load_data(&mgrkey, 1);
     load_data(&gml, 3);
-    if (crl_schemes())
+    if (GSIG->desc->has_crl)
       crl = crl_import(CODE, CRL_FILE, CRL);
     if (!grpkey || !mgrkey || !gml){
       fprintf(stderr, "Error: importing groupsig material, does scheme match?\n");
@@ -427,7 +435,7 @@ void groupsig_mode() {
     groupsig_signature_free(sig); sig = NULL;
     message_free(msg); msg = NULL;
   } else if (REV) {
-    if (!crl_schemes()) {
+    if (!GSIG->desc->has_crl) {
       fprintf(stderr, "Error: %s scheme does not support revoke\n", SCHEME);
       exit(1);
     }
@@ -436,8 +444,8 @@ void groupsig_mode() {
     revoke_signature_identity(grpkey, mgrkey, gml, crl, sig);
     groupsig_signature_free(sig); sig = NULL;
   } else if (STAT) {
-    if (!crl_schemes()) {
-      fprintf(stderr, "Error: %s scheme does not support revoked\n", SCHEME);
+    if (!GSIG->desc->has_crl) {
+      fprintf(stderr, "Error: %s scheme does not support status\n", SCHEME);
       exit(1);
     }
     groupsig_signature_t *sig;
@@ -448,7 +456,7 @@ void groupsig_mode() {
   groupsig_grp_key_free(grpkey); grpkey = NULL;
   groupsig_mgr_key_free(mgrkey); mgrkey = NULL;
   gml_free(gml); gml = NULL;
-  if (crl_schemes()) {
+  if (GSIG->desc->has_crl) {
     crl_free(crl); crl = NULL;
   }
   groupsig_clear(CODE);
@@ -548,7 +556,8 @@ int toolbox_main(int argc, char** argv) {
       if (long_options[opt_idx].flag != 0)
         break;
     case 's':
-      SCHEME = optarg;
+      strcpy(SCHEME, optarg);
+      for (char *p = SCHEME; *p; ++p) *p = tolower(*p);
       break;
     case 'j':
       check_digit(optarg, "join");

@@ -3,12 +3,13 @@ import base64
 import hashlib
 import logging
 import sys
+from typing import Any
 from pathlib import Path
 
 import requests
 import urllib3
+from _groupsig import ffi
 from pygroupsig import (
-    constants,
     groupsig,
     grpkey,
     memkey,
@@ -18,28 +19,8 @@ from pygroupsig import (
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-SCHEMES = {
-    "kty04": constants.KTY04_CODE,
-    # "bbs04": constants.BBS04_CODE,
-    "cpy06": constants.CPY06_CODE,
-    "gl19": constants.GL19_CODE,
-    "ps16": constants.PS16_CODE,
-    # "klap20": constants.KLAP20_CODE,
-}
-CRL = [constants.KTY04_CODE, constants.CPY06_CODE]
-TWO = [
-    constants.KTY04_CODE,
-    constants.CPY06_CODE,
-]  # , constants.BBS04_CODE]
 
-
-def twophase(code):
-    if code in TWO:
-        return True
-    return False
-
-
-def decode(resp, msg):
+def _decode(resp, msg) -> dict:
     try:
         return resp.json()
     except requests.JSONDecodeError:
@@ -47,61 +28,83 @@ def decode(resp, msg):
         sys.exit(1)
 
 
+def _groupsig_join_mgr(phase, session, url, msg=None, decoded=True) -> tuple[Any, bool]:
+    data = {"phase": phase}
+    if msg is not None:
+        msgout = message.message_to_base64(msg["msgout"])
+        data = {"phase": phase, "message": msgout}
+    res = session.post(f"{url}/groupsig/join", data=data)
+    data = _decode(res, f"Decoding join_mgr_{phase}")
+    if res.status_code == 200:
+        if decoded:
+            return message.message_from_base64(data["msg"]), False
+        else:
+            return data["msg"], False
+    else:
+        logging.error(data["msg"])
+        return data["msg"], True
+
+
+def _join(start, steps, gkey, session, url) -> tuple[Any, bool]:
+    mem_m = None
+    mgr_m = ffi.NULL
+    mekey = ffi.NULL
+    for phase in range(steps + 1):
+        if (not start and not phase % 2) or (start and phase % 2):
+            mgr_m, err = _groupsig_join_mgr(phase, session, url, mem_m)
+            if err: return mgr_m, err
+        else:
+            mem_m = groupsig.join_mem(phase, gkey, msgin=mgr_m, memkey=mekey)
+            mekey = mem_m["memkey"]
+    return mekey, False
+
+
 class Producer:
     """
-    Groupsig client
-
-    Given a signature group this client is able to
-    register, sign, or verify signatures, whithin the signature group
+    Group signatures client: Implements the functions for registration,
+    signing and verification of signatures within
+    a group signature
 
     Usages:
 
     REGISTER:
        >>> prod = Producer('localhost', '/path/to/cert', '/path/to/key')
        >>> prod.register()
-       todo: what returns?
+       AgIgAAAAUvOk...8Su7gfJ
 
     SIGN (requires an asset):
-        >>> prod.sign('/asset/to/sign')
-        todo: what returns if ok?
-       {
-         ...
-         "form": {
-           "key1": "value1",
-           "key2": "value2"
-         },
-         ...
-       }
+       >>> prod.sign('/asset/to/sign')
+       AjAAAAAKWU1...bDiMIUr
+       >>> # prod.sign('/asset/to/sign', '/output/signature')
 
-    VERIFY (requires a signed asset):
-        >>> prod.verify('/asset/to/verify')
-        todo:what returns if ok?
+    VERIFY (requires a signature):
+       >>> prod.verify('/signature/to/verify')
+       True
     """
 
-    def __init__(self, host: str, cert: str, key: str, port: int = 5000, gkey: str = "gkey",
-                 mkey: str = "mkey", sig: str = "sig", **kwargs):
+    def __init__(self, host: str, cert: str, key: str,
+                 port: int = 5000, gkey: str = "gkey",
+                 mkey: str = "mkey", **kwargs):
         """
-            A user-created :class:`Producer<Producer>` object.
-            Args:
-                :param host: Group signature API host/IP
-                :param cert: Path to client certificate
-                :param key: Path to client certificate key
-                :param port: Path to group signature API port
-                :param gkey: Path to group key file
-                :param mkey: Path to member key file
-                :param sig: Path to signature file
-
-            """
-
-        self.args = argparse.Namespace(
-            gkey=Path(str(gkey)),
-            mkey=Path(str(mkey)),
-            sig=Path(str(sig))
-        )
+        :param host: Group signature API host/IP
+        :type host: str
+        :param cert: Path to client certificate
+        :type cert: str
+        :param key: Path to client key
+        :type key: str
+        :param port: Group signature API port, defaults to 5000
+        :type port: int, optional
+        :param gkey: Path to group key file, defaults to "gkey"
+        :type gkey: str, optional
+        :param mkey: Path to member key file, defaults to "mkey"
+        :type mkey: str, optional
+        """
         self.url = f"https://{host}:{port}"
+        self.gkey = Path(gkey)
+        self.mkey = Path(mkey)
         self.sess = requests.Session()
         self.sess.verify = False
-        self.sess.cert = (Path(str(cert)), Path(str(key)))
+        self.sess.cert = (cert, key)
         self.code = None
         self.grpkey = None
         self.memkey = None
@@ -111,117 +114,107 @@ class Producer:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        groupsig.clear(self.code)
+        if self.code is not None:
+            groupsig.clear(self.code)
 
-    def register(self):
+    def register(self) -> str | None:
+        """
+        Registers an identity in the group
+
+        :return: Member key encoded in base64 or None
+        :rtype: str or None
+        """
         if self.memkey is None and self.grpkey is not None:
-            if twophase(self.code):
-                msg1 = groupsig.join_mem(0, self.grpkey)
-                msgout = message.message_to_base64(msg1["msgout"])
-                res = self.sess.post(
-                    f"{self.url}/groupsig/join",
-                    data={"phase": 1, "message": msgout},
-                )
-                data = decode(res, "Decoding join_1 message")
-                if res.status_code == 200:
-                    self.memkey = memkey.memkey_import(
-                        self.code, data["msg"]
-                    )
-                else:
-                    logging.error(data["msg"])
-                    return data["msg"]
+            seq = groupsig.get_joinseq(self.code)
+            start = groupsig.get_joinstart(self.code)
+            if start == 1 and seq == 1: # kty04
+                mem_m = groupsig.join_mem(0, self.grpkey)
+                mgr_m, err = _groupsig_join_mgr(
+                    1, self.sess, self.url, mem_m, decoded=False)
+                if err: return mgr_m
+                self.memkey = memkey.memkey_import(
+                    self.code, mgr_m)
             else:
-                res = self.sess.post(
-                    f"{self.url}/groupsig/join", data={"phase": 0}
-                )
-                data = decode(res, "Decoding join_0 message")
-                if res.status_code == 200:
-                    msg1 = message.message_from_base64(data["msg"])
-                    msg2 = groupsig.join_mem(1, self.grpkey, msgin=msg1)
-                    msgout = message.message_to_base64(msg2["msgout"])
-                    res2 = self.sess.post(
-                        f"{self.url}/groupsig/join",
-                        data={"phase": 2, "message": msgout},
-                    )
-                    data2 = decode(res2, "Decoding join_2 message")
-                    msg3 = message.message_from_base64(data2["msg"])
-                    msg4 = groupsig.join_mem(
-                        3, self.grpkey, msgin=msg3, memkey=msg2["memkey"]
-                    )
-                    self.memkey = msg4["memkey"]
-                else:
-                    logging.error(data["msg"])
-                    return data["msg"]
+                self.memkey, err = _join(
+                    start, seq, self.grpkey, self.sess, self.url)
+                if err: return self.memkey
             self._save_crypto()
             return memkey.memkey_export(self.memkey)
         else:
             logging.error("Already registered")
 
-    def sign(self, asset: str, sigf: str = "sig") -> None:
+    def sign(self, asset: str, sig: str = "sig") -> str | None:
         """
-        Signs an asset and saves the signature in a file
-        Args:
-            :param asset: Path to the asset to be signed
-            :param sigf: Path to file where the generated signature will be saved
+        Signs an asset and stores the signature in a file
 
-        Returns: None
+        :param asset: Path to the asset to be signed
+        :type asset: str
+        :param sig: Path to store the signature, defaults to "sig"
+        :type sig: str, optional
+
+        :return: Signature encoded in base64 or None
+        :rtype: str | None
         """
         if self.memkey is not None and self.grpkey is not None:
-            with Path(str(asset)).open("rb") as f:
+            with Path(asset).open("rb") as f:
                 digest = hashlib.sha256(f.read()).hexdigest()
-            sig = signature.signature_export(
+            sig64 = signature.signature_export(
                 groupsig.sign(digest, self.memkey, self.grpkey)
             )
-            # with self.args.sig.open("w") as f:
-            with Path(str(sigf)).open("w") as f:
-                f.write(sig)
-            return sig
+            with Path(sig).open("w") as f:
+                f.write(sig64)
+            return sig64
         else:
             logging.error("Missing memkey or grpkey")
 
-    def verify(self, asset: str, sigf: str = "sig"):
+    def verify(self, asset: str, sig: str = "sig") -> bool | None:
         """
+        Verifies an asset against its signature
 
-        Args:
-            :param asset: Path to asset file
-            :param sigf: Path to signature file
+        :param asset: Path to the signed asset
+        :type asset: str
+        :param sig: Path to the signature, defaults to "sig"
+        :type sig: str, optional
 
-        Returns:
-
+        :return: A boolean indicating the verification status or None
+        :rtype: bool | None
         """
         if self.grpkey is not None:
-            with Path(str(asset)).open("rb") as f:
+            with Path(asset).open("rb") as f:
                 digest = hashlib.sha256(f.read()).hexdigest()
-            # change self.args.sig
-            with Path(str(sigf)).open() as f:
-                sig = signature.signature_import(self.code, f.read())
-            ver = groupsig.verify(sig, digest, self.grpkey)
+            with Path(sig).open() as f:
+                sigobj = signature.signature_import(self.code, f.read())
+            ver = groupsig.verify(sigobj, digest, self.grpkey)
             logging.info(f"Signature verified: {ver}")
             return ver
         else:
             logging.error("Missing grpkey")
 
-    def _retrieve_grpkey(self):
+    def _retrieve_grpkey(self) -> None:
         res = self.sess.get(f"{self.url}/groupsig")
-        data = decode(res, "Decoding groupkey message")
-        grpkey_bytes = base64.b64decode(data["msg"])
-        self.code = grpkey_bytes[0]
-        groupsig.init(self.code)
-        self.grpkey = grpkey.grpkey_import(self.code, data["msg"])
-        self._save_crypto()
+        data = _decode(res, "Decoding groupkey message")
+        if res.status_code == 200:
+            grpkey_bytes = base64.b64decode(data["msg"])
+            self.code = grpkey_bytes[0]
+            groupsig.init(self.code)
+            self.grpkey = grpkey.grpkey_import(self.code, data["msg"])
+            self._save_crypto()
+        else:
+            logging.error(data["msg"])
+            sys.exit(1)
 
-    def _save_crypto(self):
+    def _save_crypto(self) -> None:
         if self.grpkey is not None:
-            with self.args.gkey.open("w") as f:
+            with self.gkey.open("w") as f:
                 f.write(grpkey.grpkey_export(self.grpkey))
         if self.memkey is not None:
-            with self.args.mkey.open("w") as f:
+            with self.mkey.open("w") as f:
                 f.write(memkey.memkey_export(self.memkey))
 
-    def _load_crypto(self):
+    def _load_crypto(self) -> None:
         if self.grpkey is None:
-            if self.args.gkey.is_file():
-                with self.args.gkey.open() as f:
+            if self.gkey.is_file():
+                with self.gkey.open() as f:
                     data = f.read()
                     grpkey_bytes = base64.b64decode(data)
                     self.code = grpkey_bytes[0]
@@ -232,8 +225,8 @@ class Producer:
             else:
                 self._retrieve_grpkey()
         if self.memkey is None:
-            if self.args.mkey.is_file():
-                with self.args.mkey.open() as f:
+            if self.mkey.is_file():
+                with self.mkey.open() as f:
                     self.memkey = memkey.memkey_import(
                         self.code, f.read()
                     )
@@ -262,8 +255,8 @@ def _parse_args():
         "--host",
         "-H",
         metavar="HOST",
-        required=True,
-        # default="localhost",
+        # required=True,
+        default="localhost",
         help="Group signature API host/IP",
     )
     parser.add_argument(
@@ -277,55 +270,50 @@ def _parse_args():
     parser.add_argument(
         "--cert",
         "-C",
-        metavar="CERT",
-        type=Path,
-        required=True,
-        # default="gicp_api/crypto/producers/usr1.crt",
+        metavar="PATH",
+        # required=True,
+        default="../crypto/producers/usr1.crt",
         help="Client certificate",
     )
     parser.add_argument(
         "--key",
         "-K",
-        metavar="KEY",
-        type=Path,
-        required=True,
-        # default="gicp_api/crypto/producers/usr1.key",
+        metavar="PATH",
+        # required=True,
+        default="../crypto/producers/usr1.key",
         help="Client certificate key",
     )
     parser.add_argument(
         "--gkey",
         "-g",
         metavar="PATH",
-        default=Path("gkey"),
-        type=Path,
+        default="gkey",
         help="Group key file",
     )
     parser.add_argument(
         "--mkey",
         "-m",
         metavar="PATH",
-        default=Path("mkey"),
-        type=Path,
+        default="mkey",
         help="Member key file",
     )
     parser.add_argument(
         "--sig",
         "-S",
         metavar="PATH",
-        default=Path("sig"),
-        type=Path,
+        default="sig",
         help="Signature file",
     )
     parser.add_argument(
-        "--asset", "-a", metavar="PATH", type=Path, help="Asset file"
+        "--asset", "-a", metavar="PATH", help="Asset file"
     )
-    _args = parser.parse_args()
-    if (_args.sign or _args.verify) and _args.asset is None:
+    args = parser.parse_args()
+    if (args.sign or args.verify) and args.asset is None:
         parser.error(
             "The --asset/-a argument is required when "
             "using --sign/-s or --verify/-v"
         )
-    return _args
+    return args
 
 
 def main(args):
@@ -333,9 +321,9 @@ def main(args):
         if args.register:
             print(prod.register())
         if args.sign:
-            print(prod.sign(args.asset, sigf=args.sig))
+            print(prod.sign(args.asset, sig=args.sig))
         if args.verify:
-            print(prod.verify(args.asset, sigf=args.sig))
+            print(prod.verify(args.asset, sig=args.sig))
 
 
 if __name__ == "__main__":
