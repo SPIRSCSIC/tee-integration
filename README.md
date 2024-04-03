@@ -67,7 +67,7 @@ Patch CMakeLists.txt files from the sdk to include our changes
 patch -u spirs_tee_sdk/enclave/CMakeLists.txt -i patches/cmakelistsenclave.patch
 patch -u spirs_tee_sdk/host/CMakeLists.txt -i patches/cmakelistshost.patch
 patch -u spirs_tee_sdk/CMakeLists.txt -i patches/cmakelists.patch
-patch -u spirs_tee_sdk/docker/Dockerfile -i patches/dockerfile.patch
+# patch -u spirs_tee_sdk/docker/Dockerfile -i patches/dockerfile.patch
 patch -u spirs_tee_sdk/modules/libgroupsig/src/wrappers/python/pygroupsig/libgroupsig_build.py -i patches/pygroupsig.patch
 ```
 
@@ -76,10 +76,16 @@ Copy the required files to compile our project
 cp -r modules/libgroupsig/tee spirs_tee_sdk/modules/libgroupsig
 cp -r modules/mondrian/tee spirs_tee_sdk/modules/mondrian
 cp groupsig.cmake groupsig_import.cmake spirs_tee_sdk
-cp -r enclave/gicp enclave/ta_callbacks_gicp.c spirs_tee_sdk/enclave/
+cp -r enclave/{gicp,ta_callbacks_gicp.c} spirs_tee_sdk/enclave/
 cp enclave/include/ta_shared_gicp.h spirs_tee_sdk/enclave/include/
 cp enclave/tee_internal_api/include/tee_ta_api_gicp.h spirs_tee_sdk/enclave/tee_internal_api/include/
-cp -r host/gicp_api host/host_gicp.c spirs_tee_sdk/host/
+cp -r host/{gicp_api,host_gicp.c} spirs_tee_sdk/host/
+```
+
+Generate the crypto material for the demo
+```bash
+(cd scripts && ./crypto.sh gms monitors producers)
+mkdir -p spirs_tee_sdk/crypto && cp -r scripts/{gms,monitors,producers,chain.pem} spirs_tee_sdk/crypto
 ```
 
 Launch the `spirs_keystone:22.04 `container in detached mode
