@@ -15,7 +15,7 @@ library inside the TEE.
 
 ## Setup docker container + QEMU
 ### Preconfiguration
-You need to have the container generated from [spirs_tee_sdk](https://gitlab.com/spirs_eu/spirs_tee_sdk)
+You need the container built from [spirs_tee_sdk](https://gitlab.com/spirs_eu/spirs_tee_sdk)
 (named as `spirs_keystone:22.04`).
 If you have not compiled it yet, create a file named `token` with your gitlab credentials
 in the directory `spirs_tee_sdk/docker`, using the following the format
@@ -23,6 +23,11 @@ in the directory `spirs_tee_sdk/docker`, using the following the format
 ```
 username=your_username
 password=your_password_or_token
+```
+
+Patch it to use latest ubuntu version (22.04)
+```bash
+patch -u spirs_tee_sdk/docker/Dockerfile -i patches/dockerfile.patch
 ```
 
 Then compile the container (it will take around 15~20min)
@@ -67,7 +72,6 @@ Patch CMakeLists.txt files from the sdk to include our changes
 patch -u spirs_tee_sdk/enclave/CMakeLists.txt -i patches/cmakelistsenclave.patch
 patch -u spirs_tee_sdk/host/CMakeLists.txt -i patches/cmakelistshost.patch
 patch -u spirs_tee_sdk/CMakeLists.txt -i patches/cmakelists.patch
-# patch -u spirs_tee_sdk/docker/Dockerfile -i patches/dockerfile.patch
 patch -u spirs_tee_sdk/modules/libgroupsig/src/wrappers/python/pygroupsig/libgroupsig_build.py -i patches/pygroupsig.patch
 ```
 
