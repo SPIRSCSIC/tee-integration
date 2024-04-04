@@ -5,3 +5,7 @@ spirs_tee_sdk/
 *csr
 *key
 venv
+host/tests/results/
+*__pycache__/
+.idea/
+.vscode/
