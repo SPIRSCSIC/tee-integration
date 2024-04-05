@@ -1,0 +1,6 @@
+[run]
+include =
+	./client.py
+	./client_mon.py
+	./server.py
+	./test_static.py

@@ -26,10 +26,10 @@ def setup_server(alg):
     # TODO: integrate commands into script (eg. bash setup_server.sh <alg>) the server is started using <algorithm>
     _allowed = ['cpy06']
     if alg not in _allowed: raise ValueError(f"Unknow algorithm '{alg}'. Allowed: {_allowed}")
-    print(f"[*] Creating signature group for producers ({alg})")
-    _ssh_qemu_cmd(f'./gdemos.ke groupsig -s {alg}')
     print(f"[*] Creating signature group for monitors ({alg})")
     _ssh_qemu_cmd(f'./gdemos.ke groupsig -s {alg} -a _mon')
+    print(f"[*] Creating signature group for producers ({alg})")
+    _ssh_qemu_cmd(f'./gdemos.ke groupsig -s {alg}')
     print("[*] Running the server in background...")
     _ssh_qemu_cmd('python3 ./gicp_api/server.py '
                   '-C crypto/gms/usr1.crt '
@@ -39,7 +39,6 @@ def setup_server(alg):
 
 
 def setup_container():
-    # 'docker run --name spirs -it --rm -d -v $PWD/spirs_tee_sdk:/spirs_tee_sdk spirs_keystone:22.04'
     os.chdir(__file__.split('/host/tests')[0])  # go to project root dir
     print("[*] Setting up environment [scripts/setup.sh]")
     os.system(f"bash scripts/setup.sh")
@@ -48,7 +47,6 @@ def setup_container():
     print('[+] Container ready')
     print("[*] Compiling qemu image in the container...")
     # WITHIN DOCKER
-    # /usr/bin/time -f "%E elapsed [h:m:s]" sleep 2
     ret = os.system('docker exec -id -w /spirs_tee_sdk spirs make -C build -j qemu')
     sleep(5)  # Wait for qemu image to be compiled
     # TODO: try/catch if cmd execution error
@@ -60,21 +58,18 @@ def setup_container():
     # TODO: Test different algorithms ?
     setup_server('cpy06')
     """
-    print("[DEBUG] NOW START THE SERVER MANUALLY")
     while True:
         if input("[DEBUG] Write 'continue' once the server is started.\n").lower() == 'continue':
             break
         else:
             print('[DEBUG] Command unknown')
-    
-    # TODO: automate server initialization
     """
 
 
 def run_test_with_coverage():
     print('[*] Running coverage tests')
     os.system("docker exec -t -w /spirs_tee_sdk/host/gicp_api "
-              f"spirs pytest --cov=. --cov-report json:{report_name} test_static.py")
+              f"spirs pytest --cov --cov-config=.coveragerc --cov-report json:{report_name} test_static.py")
 
 
 def run_tests_no_coverage():
@@ -88,12 +83,8 @@ def retrieve_test_results():
     ret = os.system(f"docker cp "
                     f"spirs:/spirs_tee_sdk/host/gicp_api/{report_name} "
                     f"{report_file}")
-    """
-    if ret != 0:
-        print(f'[-] Unexpected error retrieving the report. (errno: {ret})')
-    else:
-        print(f'[+] Report retrieved successfully ({report_name})')
     
+    """
     # TODO: secure copy to get that file from qemu
     os.system('docker exec -t -w /spirs_tee_sdk/host/gicp_api spirs '
               'scp -i /keystone/build/overlay/root/.ssh/id_rsa '
@@ -155,7 +146,8 @@ if __name__ == '__main__':
         retrieve_test_results()
         teardown_container()
         print(f'[*] Server log should be now available in host/tests directory')
-        print('[+] Execution completed successfully.')
+        print('[+] Test execution completed successfully')
+        os.system(f"python3 {os.path.join(os.path.split(__file__)[0], 'report_formatter.py')} -m")
     except Exception as e:
         print(f'[!] FATAL ERROR {e}')
         print('[!] Execution failed')

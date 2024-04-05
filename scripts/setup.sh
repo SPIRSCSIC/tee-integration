@@ -35,6 +35,7 @@ clonepatch_md() {
 
 # Include tests in the SDK
 cp host/tests/test_static.py spirs_tee_sdk/host/gicp_api/
+cp host/tests/.coveragerc spirs_tee_sdk/host/gicp_api/
 # Update gicp api clients in the SDK (why not done before?)
 cp host/gicp_api/client.py spirs_tee_sdk/host/gicp_api/
 cp host/gicp_api/client_mon.py spirs_tee_sdk/host/gicp_api/
