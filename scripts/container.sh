@@ -37,7 +37,7 @@ echo "Recompiling python3 buildroot"
 docker exec $CNAME make -C build/buildroot.build python3-dirclean all
 
 echo "Installing python dependencies"
-docker exec $CNAME sh -c 'apt update && apt install -y python3-pip && pip install path requests'
+docker exec $CNAME sh -c 'apt update && apt install -y python3-pip && pip install requests'
 
 # echo "Building enclave"
 # docker exec $CNAME sh -c 'cmake -B /spirs_tee_sdk/build /spirs_tee_sdk && make -C /spirs_tee_sdk/build'
