@@ -45,7 +45,7 @@ echo "[*] Recompiling python3 buildroot [STEP 3/8]"
 
 echo "[*] Installing python dependencies [STEP 4/8]"
 /usr/bin/time -f "4;Installing python dependencies; %E" -o $time_log  --append \
-  docker exec $CNAME sh -c 'apt update && apt install -y python3-pip && pip install path requests pytest pytest-cov pytest-json-report'
+  docker exec $CNAME sh -c 'apt update && apt install -y python3-pip && pip install requests pytest pytest-cov pytest-json-report'
 
 # echo "[*] Building enclave [step 5/8]"
 #/usr/bin/time -f "[*] 5;Building enclave; %E" -o $time_log  --append \
