@@ -7,6 +7,48 @@ __server_log__ = os_path.join(os_path.split(__file__)[0], 'results', 'server.log
 __outfile__ = os_path.join(os_path.split(__file__)[0], 'results', 'performance.log')
 
 
+def _format_coverage(rdata):
+    buffer = list()
+    df_report_summary = DataFrame(columns=['file', 'cov %', '# missed lines'])
+    
+    for file_name in rdata['files']:
+        file_index = rdata['files'][file_name]
+        df_report_summary.loc[len(df_report_summary)] = [
+            file_name,
+            file_index['summary']['percent_covered_display'],
+            file_index['summary']['missing_lines']
+        ]
+        # Get missing lines if necessary
+        if args.missing and file_index['summary']['missing_lines'] > 0:
+            buffer.append(f"\n{file_name} - {file_index['summary']['missing_lines']} missed lines")
+            if file_name.startswith('test_'):
+                _fpath = os_path.join(os_path.split(__file__)[0], file_name)
+            else:
+                _fpath = os_path.join(os_path.split(__file__)[0], '..', 'gicp_api', file_name)
+            with open(_fpath, 'r', encoding='utf-8') as sourcefile:
+                source_code = sourcefile.readlines()
+                for ln in file_index['missing_lines']:
+                    try:
+                        buffer.append(f"  {ln}: {source_code[ln - 1].strip()}")
+                    except IndexError:
+                        buffer.append(f"{ln}: ERROR RETRIEVING LINE")
+    df_report_summary.loc[len(df_report_summary)] = [
+        'TOTAL',
+        report['totals']['percent_covered_display'],
+        report['totals']['missing_lines']
+    ]
+    with open(args.output if args.output is not None else __outfile__, 'a', encoding='utf-8') as _outfile:
+        _outfile.write(f"{'-' * 20}\nTEST COVERAGE SUMMARY\n\n" + df_report_summary.to_string(index=False) + '\n')
+        if args.missing and len(buffer) > 0:
+            _outfile.write(f"\n\n- Missing lines -\n" + '\n'.join(buffer) + '\n')
+
+
+def _format_no_coverage(rdata):
+    df_summary = DataFrame(columns=['state', 'count'], data=[(k, v) for k, v in rdata['summary'].items()])
+    with open(args.output if args.output is not None else __outfile__, 'a', encoding='utf-8') as _outfile:
+        _outfile.write(f"{'-' * 20}\nTEST SUMMARY\n\n" + df_summary.to_string(index=False) + '\n')
+
+
 def _parse_args(cmd=None):
     import argparse
     parser = argparse.ArgumentParser(
@@ -36,43 +78,18 @@ def _parse_args(cmd=None):
 
 if __name__ == '__main__':
     args = _parse_args()
-    buffer = list()
-    df_report_summary = DataFrame(columns=['file', 'cov %', '# missed lines'])
     
     with open(args.report if args.report is not None else __report_path__, 'r') as reportfile:
         print(f"[*] Parsing Pytest report ({reportfile.name.split('tee-integration/')[1]})...")
         report = json_load(reportfile)
-    for file_name in report['files']:
-        file_index = report['files'][file_name]
-        df_report_summary.loc[len(df_report_summary)] = [
-            file_name,
-            file_index['summary']['percent_covered_display'],
-            file_index['summary']['missing_lines']
-        ]
-        # Get missing lines if necessary
-        if args.missing and file_index['summary']['missing_lines'] > 0:
-            buffer.append(f"\n{file_name} - {file_index['summary']['missing_lines']} missed lines")
-            if file_name.startswith('test_'):
-                _fpath = os_path.join(os_path.split(__file__)[0], file_name)
-            else:
-                _fpath = os_path.join(os_path.split(__file__)[0], '..', 'gicp_api', file_name)
-            with open(_fpath, 'r', encoding='utf-8') as sourcefile:
-                source_code = sourcefile.readlines()
-                for ln in file_index['missing_lines']:
-                    try:
-                        buffer.append(f"  {ln}: {source_code[ln - 1].strip()}")
-                    except IndexError:
-                        buffer.append(f"{ln}: ERROR RETRIEVING LINE")
-    df_report_summary.loc[len(df_report_summary)] = [
-        'TOTAL',
-        report['totals']['percent_covered_display'],
-        report['totals']['missing_lines']
-    ]
+    
+    try:
+        _format_coverage(report)
+    except KeyError:
+        _format_no_coverage(report)
+    
+    # Include the server logs in the test report
     with open(args.output if args.output is not None else __outfile__, 'a', encoding='utf-8') as outfile:
-        outfile.write(f"{'-' * 20}\nTEST COVERAGE SUMMARY\n\n" + df_report_summary.to_string(index=False) + '\n')
-        if args.missing and len(buffer) > 0:
-            outfile.write(f"\n\n- Missing lines -\n" + '\n'.join(buffer) + '\n')
-        # Include the server logs in the test report
         outfile.write(f"{'-' * 20}\nSERVER LOGS\n\n```shell\n")
         outfile.writelines(open(args.server_log if args.server_log is not None else __server_log__, 'r').readlines())
         outfile.write(f"```\n")
