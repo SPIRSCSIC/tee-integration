@@ -5,6 +5,6 @@ RUN apt update && apt install -y --no-install-recommends build-essential gdb cma
 RUN git clone https://gitlab.gicp.es/spirs/libgroupsig.git
 WORKDIR /libgroupsig
 RUN cmake -B build && make -C build
-RUN cd src/wrappers/python/ && pip install path requests && python3 setup.py bdist_wheel && pip install dist/pygroupsig-1.1.0-cp310-cp310-linux_x86_64.whl
+RUN cd src/wrappers/python/ && pip install requests && python3 setup.py bdist_wheel && pip install dist/pygroupsig-1.1.0-cp310-cp310-linux_x86_64.whl
 COPY host/gicp_api/client.py .
 ENTRYPOINT ["python3", "/libgroupsig/client.py"]

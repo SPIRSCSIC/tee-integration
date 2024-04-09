@@ -1,161 +1,210 @@
-import os
-from time import sleep
+import argparse
+import subprocess
 from datetime import datetime
+from pathlib import Path
+from time import sleep
 
-report_name = '.report.json'
-report_file = os.path.join(os.path.split(__file__)[0], 'results', report_name)
-time_log = os.path.join(os.path.split(__file__)[0], 'results', 'performance.log')
-server_log = os.path.join(os.path.split(__file__)[0], 'results', 'server.log')
+
+CONT_NAME = "spirs_test"
+SDK_NAME = "spirs_tee_sdk_test"
+OUTPUT = subprocess.DEVNULL
+CWD = Path(__file__)
+REPORT_NAME = ".report.json"
+REPORT_FILE = CWD.parent / f"results/{REPORT_NAME}"
+TIME_LOG = CWD.parent / "results/performance.log"
+SERVER_LOG = CWD.parent / "results/server.log"
 
 
 def strfy_time(seconds):
     m, s = divmod(seconds, 60)
     h, m = divmod(m, 60)
-    return (f"{h:d}h " if h > 0 else '') + (f"{m:02d}m " if m > 0 else '') + f"{s:02d}s"
+    return (
+        (f"{h:d}h " if h > 0 else "")
+        + (f"{m:02d}m " if m > 0 else "")
+        + f"{s:02d}s"
+    )
 
 
 def _ssh_qemu_cmd(cmd):
-    os.system(f"docker exec -t spirs ssh"
-              f" -i /keystone/build/overlay/root/.ssh/id_rsa "
-              f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-              f"-p 7777 root@localhost {cmd}"
-              )
+    subprocess.run(
+        f"docker exec -t {CONT_NAME} ssh"
+        f" -i /keystone/build/overlay/root/.ssh/id_rsa "
+        f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+        f"-p 7777 root@localhost {cmd}",
+        shell=True,
+        stdout=OUTPUT,
+        stderr=OUTPUT,
+    )
 
 
 def setup_server(alg):
-    # TODO: integrate commands into script (eg. bash setup_server.sh <alg>) the server is started using <algorithm>
-    _allowed = ['cpy06']
-    if alg not in _allowed: raise ValueError(f"Unknow algorithm '{alg}'. Allowed: {_allowed}")
+    # TODO: integrate commands into script (eg. bash setup_server.sh <alg>)
+    # the server is started using <algorithm>
     print(f"[*] Creating signature group for monitors ({alg})")
-    _ssh_qemu_cmd(f'./gdemos.ke groupsig -s {alg} -a _mon')
+    _ssh_qemu_cmd(f"./gdemos.ke groupsig -s {alg} -a _mon --quiet")
     print(f"[*] Creating signature group for producers ({alg})")
-    _ssh_qemu_cmd(f'./gdemos.ke groupsig -s {alg}')
+    _ssh_qemu_cmd(f"./gdemos.ke groupsig -s {alg} --quiet")
     print("[*] Running the server in background...")
-    _ssh_qemu_cmd('python3 ./gicp_api/server.py '
-                  '-C crypto/gms/usr1.crt '
-                  '-K crypto/gms/usr1.key '
-                  f'-c crypto/chain.pem > {server_log} &')
-    sleep(7)  # Wait for server to bootstrap
+    _ssh_qemu_cmd(
+        f"python3 ./gicp_api/server.py -C crypto/gms/usr1.crt "
+        f"-K crypto/gms/usr1.key -c crypto/chain.pem > {SERVER_LOG} &"
+    )
+    sleep(15)  # Wait for server to bootstrap
 
 
 def setup_container():
-    os.chdir(__file__.split('/host/tests')[0])  # go to project root dir
-    print("[*] Setting up environment [scripts/setup.sh]")
-    os.system(f"bash scripts/setup.sh")
+    root = CWD.parents[2]
+    if not (root / SDK_NAME).is_dir():
+        print("[*] Setting up environment [scripts/setup.sh]")
+        subprocess.run(
+            f"bash scripts/setup.sh {SDK_NAME}",
+            cwd=root,
+            shell=True,
+            stdout=OUTPUT,
+            stderr=OUTPUT,
+        )
     print("[*] Setting up container [scripts/container.sh] ETA 5~10m")
-    os.system(f"bash scripts/container.sh")
-    print('[+] Container ready')
+    subprocess.run(
+        f"bash scripts/container.sh {CONT_NAME} {SDK_NAME}",
+        cwd=root,
+        shell=True,
+        stdout=OUTPUT,
+        stderr=OUTPUT,
+    )
+    print("[+] Container ready")
+    print(f"[*] Removing previous execution artifacts")
+    subprocess.run(
+        f"""docker exec {CONT_NAME} bash -c 'ps -eo pid,comm """
+        """| awk "{if(\\$2 == \\"qemu-system-ris\\") print \\$1}" """
+        """| xargs -r kill -9'""",
+        shell=True,
+    )
     print("[*] Compiling qemu image in the container...")
     # WITHIN DOCKER
-    ret = os.system('docker exec -id -w /spirs_tee_sdk spirs make -C build -j qemu')
-    sleep(5)  # Wait for qemu image to be compiled
+    ret = subprocess.run(
+        f"docker exec -id {CONT_NAME} make -C /spirs_tee_sdk/build -j qemu",
+        shell=True,
+        stdout=OUTPUT,
+        stderr=OUTPUT,
+    )
+    sleep(10)  # Wait for qemu image to be compiled
     # TODO: try/catch if cmd execution error
-    if ret != 0:
+    if ret.returncode != 0:
         print(f"[-] Unexpected error compiling qemu image")
         raise RuntimeError("Server could not be started")
     else:
-        print('[+] Qemu image compiled successfully')
+        print("[+] Qemu image compiled successfully")
     # TODO: Test different algorithms ?
-    setup_server('cpy06')
-    """
-    while True:
-        if input("[DEBUG] Write 'continue' once the server is started.\n").lower() == 'continue':
-            break
-        else:
-            print('[DEBUG] Command unknown')
-    """
+    setup_server("cpy06")
 
 
-def run_test_with_coverage():
-    print('[*] Running coverage tests')
-    os.system("docker exec -t -w /spirs_tee_sdk/host/gicp_api "
-              f"spirs pytest --cov --cov-config=.coveragerc --cov-report json:{report_name} test_static.py")
+def run_test_with_coverage(verbose):
+    print("[*] Running coverage tests")
+    subprocess.run(
+        f"docker exec -t -w /spirs_tee_sdk/host/gicp_api "
+        f"{CONT_NAME} pytest --cov --cov-config=.coveragerc "
+        f"--cov-report json:{REPORT_NAME} "
+        f"{'-v' if verbose > 0 else ''} test_static.py",
+        shell=True,
+    )
 
 
-def run_tests_no_coverage():
-    print('[*] Running test without coverage')
-    os.system("docker exec -t -w /spirs_tee_sdk/host/gicp_api "
-              f"spirs pytest --json-report --json-report-file={report_name} -v test_static.py")
+def run_tests_no_coverage(verbose):
+    print("[*] Running test without coverage")
+    subprocess.run(
+        f"docker exec -t -w /spirs_tee_sdk/host/gicp_api "
+        f"{CONT_NAME} pytest --json-report --json-report-file={REPORT_NAME} "
+        f"{'-v' if verbose > 0 else ''} test_static.py",
+        shell=True,
+    )
 
 
 def retrieve_test_results():
     print("[*] Retrieving test results")
-    ret = os.system(f"docker cp "
-                    f"spirs:/spirs_tee_sdk/host/gicp_api/{report_name} "
-                    f"{report_file}")
-    
-    """
-    # TODO: secure copy to get that file from qemu
-    os.system('docker exec -t -w /spirs_tee_sdk/host/gicp_api spirs '
-              'scp -i /keystone/build/overlay/root/.ssh/id_rsa '
-              '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null '
-              '-P 7777 root@localhost:server.log .')
-    ret = os.system(f"docker cp "
-                    f"spirs:/spirs_tee_sdk/host/gicp_api/server.log "
-                    f"{os.path.join(os.path.split(__file__)[0], 'server.log')}")
-    if ret != 0:
-        print(f'[-] Unexpected error retrieving server log. (errno: {ret})')
-    else:
-        print('[+] Server log retrieved successfully (server.log)')
-    """
+    subprocess.run(
+        f"docker cp {CONT_NAME}:/spirs_tee_sdk/host/gicp_api/{REPORT_NAME} "
+        f"{REPORT_FILE}",
+        shell=True,
+    )
 
 
 def teardown_container():
-    print('[*] Stopping container...')
-    ret = os.system(f"docker stop spirs")
-    if ret == 0:
-        print('[+] Container stopped successfully')
-    elif ret == 256:
-        print('[*] The container does not appear to be running')
+    print("[*] Stopping container...")
+    ret = subprocess.run(f"docker stop {CONT_NAME}", shell=True)
+    if ret.returncode == 0:
+        print("[+] Container stopped successfully")
+    elif ret.returncode == 256:
+        print("[*] The container does not appear to be running")
     else:
-        print(f'[-] Unexpected error stopping the container (errno: {ret})')
+        print(
+            f"[-] Unexpected error stopping the container "
+            f"(errno: {ret.returncode})"
+        )
 
 
-def _parse_args(cmd=None):
-    import argparse
+def _parse_args():
     parser = argparse.ArgumentParser(
-        prog=os.path.split(__file__)[1],
         description="Test GiCP API, classes and methods"
     )
     parser.add_argument(
-        '-c', '--cov', '--coverage',
-        action='store_true',
+        "-c",
+        "--cov",
+        "--coverage",
+        action="store_true",
         default=False,
-        help='Includes coverage information in the report'
+        help="Includes coverage information in the report",
     )
     parser.add_argument(
-        '-q', '--quiet',
-        action='store_true',
-        default=False,
-        help='Reduces the verbosity of the executed commands'
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Verbose output (repeat for increased verbosity)",
     )
-    return parser.parse_args(cmd)
+    return parser.parse_args()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     _start = datetime.now()
     try:
         _args = _parse_args()
+        if _args.verbose > 1:
+            OUTPUT = None
         setup_container()
         _test_start = datetime.now()
         if _args.cov:
-            run_test_with_coverage()
+            run_test_with_coverage(_args.verbose)
         else:
-            run_tests_no_coverage()
-        os.system(f"echo '9;Run tests; {strfy_time((datetime.now() - _test_start).seconds)}' >> {time_log}")
+            run_tests_no_coverage(_args.verbose)
+        subprocess.run(
+            f"echo '9;Run tests;"
+            f"{strfy_time((datetime.now() - _test_start).seconds)}' "
+            f">> {TIME_LOG}",
+            shell=True,
+        )
         retrieve_test_results()
         teardown_container()
-        print(f'[*] Server log should be now available in host/tests directory')
-        print('[+] Test execution completed successfully')
-        os.system(f"python3 {os.path.join(os.path.split(__file__)[0], 'report_formatter.py')} -m")
+        print(
+            f"[*] Server log should be now available in host/tests directory"
+        )
+        print("[+] Test execution completed successfully")
+        subprocess.run(
+            f"python3 {CWD.parent / 'report_formatter.py'} -m",
+            shell=True,
+        )
     except Exception as e:
-        print(f'[!] FATAL ERROR {e}')
-        print('[!] Execution failed')
+        print(f"[!] FATAL ERROR {e}")
+        print("[!] Execution failed")
         teardown_container()
     finally:
-        print(f"[*] Time elapsed: {strfy_time((datetime.now() - _start).seconds)}")
+        print(
+            f"[*] Time elapsed: {strfy_time((datetime.now() - _start).seconds)}"
+        )
         # TODO: add test time
-        os.system(f"echo '--------------------\n"
-                  f"TOTAL TIME {strfy_time((datetime.now() - _start).seconds)}' >> {time_log}"
-                  )
-        print('[*] Exiting...')
+        subprocess.run(
+            f"echo '--------------------\n"
+            f"TOTAL TIME {strfy_time((datetime.now() - _start).seconds)}' "
+            f">> {TIME_LOG}",
+            shell=True,
+        )
+        print("[*] Exiting...")

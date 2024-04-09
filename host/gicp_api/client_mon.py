@@ -3,19 +3,13 @@ import base64
 import hashlib
 import logging
 import sys
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 import requests
 import urllib3
 from _groupsig import ffi
-from pygroupsig import (
-    groupsig,
-    grpkey,
-    memkey,
-    message,
-    signature,
-)
+from pygroupsig import groupsig, grpkey, memkey, message, signature
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -28,7 +22,9 @@ def _decode(resp, msg) -> dict:
         sys.exit(1)
 
 
-def _groupsig_join_mgr(phase, session, url, msg=None, decoded=True) -> tuple[Any, bool]:
+def _groupsig_join_mgr(
+    phase, session, url, msg=None, decoded=True
+) -> tuple[Any, bool]:
     data = {"phase": phase, "monitor": 1}
     if msg is not None:
         msgout = message.message_to_base64(msg["msgout"])
@@ -51,10 +47,15 @@ def _join(start, steps, gkey, session, url) -> tuple[Any, bool]:
     mekey = ffi.NULL
     for phase in range(steps + 1):
         if (not start and not phase % 2) or (start and phase % 2):
-            mgr_m, err = _groupsig_join_mgr(phase, session, url, mem_m)
-            if err: return mgr_m, err
+            mgr_m, err = _groupsig_join_mgr(
+                phase, session, url, mem_m
+            )
+            if err:
+                return mgr_m, err
         else:
-            mem_m = groupsig.join_mem(phase, gkey, msgin=mgr_m, memkey=mekey)
+            mem_m = groupsig.join_mem(
+                phase, gkey, msgin=mgr_m, memkey=mekey
+            )
             mekey = mem_m["memkey"]
     return mekey, False
 
@@ -100,10 +101,17 @@ class Monitor:
 
     """
 
-    def __init__(self, host: str, cert: str, key: str,
-                 port: int = 5000, gkey: str = "gkey_mon",
-                 mkey: str = "mkey_mon",
-                 gkeyc: str = "gkey", **kwargs):
+    def __init__(
+        self,
+        host: str,
+        cert: str,
+        key: str,
+        port: int = 5000,
+        gkey: str = "gkey_mon",
+        mkey: str = "mkey_mon",
+        gkeyc: str = "gkey",
+        **kwargs,
+    ):
         """
         :param host: Group signature API host/IP
         :type host: str
@@ -149,17 +157,20 @@ class Monitor:
         if self.memkey is None and self.grpkey is not None:
             seq = groupsig.get_joinseq(self.code)
             start = groupsig.get_joinstart(self.code)
-            if start == 1 and seq == 1: # kty04
+            if start == 1 and seq == 1:  # kty04
                 mem_m = groupsig.join_mem(0, self.grpkey)
                 mgr_m, err = _groupsig_join_mgr(
-                    1, self.sess, self.url, mem_m, decoded=False)
-                if err: return mgr_m
-                self.memkey = memkey.memkey_import(
-                    self.code, mgr_m)
+                    1, self.sess, self.url, mem_m, decoded=False
+                )
+                if err:
+                    return mgr_m
+                self.memkey = memkey.memkey_import(self.code, mgr_m)
             else:
                 self.memkey, err = _join(
-                    start, seq, self.grpkey, self.sess, self.url)
-                if err: return self.memkey
+                    start, seq, self.grpkey, self.sess, self.url
+                )
+                if err:
+                    return self.memkey
             self._save_crypto()
             return memkey.memkey_export(self.memkey)
         else:
@@ -189,7 +200,9 @@ class Monitor:
         else:
             logging.error("Missing memkey or grpkey")
 
-    def verify(self, asset: str, sig: str = "sig", monitor=False) -> bool | None:
+    def verify(
+        self, asset: str, sig: str = "sig", monitor=False
+    ) -> bool | None:
         """
         Verifies an asset against its signature
 
@@ -242,8 +255,11 @@ class Monitor:
                 sig64 = f.read()
             res2 = self.sess.post(
                 f"{self.url}/groupsig/revoke",
-                data={"signature_token": sigt, "token": token,
-                      "signature": sig64}
+                data={
+                    "signature_token": sigt,
+                    "token": token,
+                    "signature": sig64,
+                },
             )
             data = _decode(res2, "Decoding revoke message")
             logging.info(data["msg"])
@@ -267,8 +283,7 @@ class Monitor:
         with Path(sig).open() as f:
             sig64 = f.read()
         res = self.sess.post(
-            f"{self.url}/groupsig/status",
-            data={"signature": sig64}
+            f"{self.url}/groupsig/status", data={"signature": sig64}
         )
         data = _decode(res, "Decoding status message")
         logging.info(data["msg"])
@@ -280,20 +295,23 @@ class Monitor:
         if clients:
             res = self.sess.get(f"{self.url}/groupsig")
         else:
-            res = self.sess.get(f"{self.url}/groupsig",
-                                data={"monitor": 1})
+            res = self.sess.get(
+                f"{self.url}/groupsig", data={"monitor": 1}
+            )
         data = _decode(res, "Decoding groupkey message")
         if res.status_code == 200:
             grpkey_bytes = base64.b64decode(data["msg"])
             if clients:
                 self.codec = grpkey_bytes[0]
                 self.grpkeyc = grpkey.grpkey_import(
-                    self.codec, data["msg"])
+                    self.codec, data["msg"]
+                )
             else:
                 self.code = grpkey_bytes[0]
                 groupsig.init(self.code)
                 self.grpkey = grpkey.grpkey_import(
-                    self.code, data["msg"])
+                    self.code, data["msg"]
+                )
             self._save_crypto()
         else:
             logging.error(data["msg"])
@@ -327,7 +345,8 @@ class Monitor:
                     self.code = grpkey_bytes[0]
                     groupsig.init(self.code)
                     self.grpkey = grpkey.grpkey_import(
-                        self.code, data)
+                        self.code, data
+                    )
         else:
             self._retrieve_grpkey(clients=clients)
 
@@ -440,8 +459,7 @@ def _parse_args():
         help="Signature file",
     )
     parser.add_argument(
-        "--asset", "-a", metavar="PATH",
-        help="Asset file"
+        "--asset", "-a", metavar="PATH", help="Asset file"
     )
     args = parser.parse_args()
     if (args.sign or args.verify) and args.asset is None:

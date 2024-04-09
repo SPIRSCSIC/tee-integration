@@ -11,8 +11,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from flask import Flask, jsonify, request
-from werkzeug.serving import WSGIRequestHandler
 from werkzeug.exceptions import BadRequestKeyError
+from werkzeug.serving import WSGIRequestHandler
 
 
 A_SCHEMES = ["mondrian"]
@@ -182,8 +182,7 @@ def groupsig_join():
         if is_monitor:
             cmd_args.extend(["--affix", ARGS.affix])
         output, err = run(
-            BS
-            + cmd_args,
+            BS + cmd_args,
             f"Join phase {phase}",
         )
         if err:

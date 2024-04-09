@@ -3,19 +3,13 @@ import base64
 import hashlib
 import logging
 import sys
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 import requests
 import urllib3
 from _groupsig import ffi
-from pygroupsig import (
-    groupsig,
-    grpkey,
-    memkey,
-    message,
-    signature,
-)
+from pygroupsig import groupsig, grpkey, memkey, message, signature
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -28,7 +22,9 @@ def _decode(resp, msg) -> dict:
         sys.exit(1)
 
 
-def _groupsig_join_mgr(phase, session, url, msg=None, decoded=True) -> tuple[Any, bool]:
+def _groupsig_join_mgr(
+    phase, session, url, msg=None, decoded=True
+) -> tuple[Any, bool]:
     data = {"phase": phase}
     if msg is not None:
         msgout = message.message_to_base64(msg["msgout"])
@@ -51,10 +47,15 @@ def _join(start, steps, gkey, session, url) -> tuple[Any, bool]:
     mekey = ffi.NULL
     for phase in range(steps + 1):
         if (not start and not phase % 2) or (start and phase % 2):
-            mgr_m, err = _groupsig_join_mgr(phase, session, url, mem_m)
-            if err: return mgr_m, err
+            mgr_m, err = _groupsig_join_mgr(
+                phase, session, url, mem_m
+            )
+            if err:
+                return mgr_m, err
         else:
-            mem_m = groupsig.join_mem(phase, gkey, msgin=mgr_m, memkey=mekey)
+            mem_m = groupsig.join_mem(
+                phase, gkey, msgin=mgr_m, memkey=mekey
+            )
             mekey = mem_m["memkey"]
     return mekey, False
 
@@ -82,9 +83,16 @@ class Producer:
        True
     """
 
-    def __init__(self, host: str, cert: str, key: str,
-                 port: int = 5000, gkey: str = "gkey",
-                 mkey: str = "mkey", **kwargs):
+    def __init__(
+        self,
+        host: str,
+        cert: str,
+        key: str,
+        port: int = 5000,
+        gkey: str = "gkey",
+        mkey: str = "mkey",
+        **kwargs,
+    ):
         """
         :param host: Group signature API host/IP
         :type host: str
@@ -127,17 +135,20 @@ class Producer:
         if self.memkey is None and self.grpkey is not None:
             seq = groupsig.get_joinseq(self.code)
             start = groupsig.get_joinstart(self.code)
-            if start == 1 and seq == 1: # kty04
+            if start == 1 and seq == 1:  # kty04
                 mem_m = groupsig.join_mem(0, self.grpkey)
                 mgr_m, err = _groupsig_join_mgr(
-                    1, self.sess, self.url, mem_m, decoded=False)
-                if err: return mgr_m
-                self.memkey = memkey.memkey_import(
-                    self.code, mgr_m)
+                    1, self.sess, self.url, mem_m, decoded=False
+                )
+                if err:
+                    return mgr_m
+                self.memkey = memkey.memkey_import(self.code, mgr_m)
             else:
                 self.memkey, err = _join(
-                    start, seq, self.grpkey, self.sess, self.url)
-                if err: return self.memkey
+                    start, seq, self.grpkey, self.sess, self.url
+                )
+                if err:
+                    return self.memkey
             self._save_crypto()
             return memkey.memkey_export(self.memkey)
         else:
@@ -183,7 +194,9 @@ class Producer:
             with Path(asset).open("rb") as f:
                 digest = hashlib.sha256(f.read()).hexdigest()
             with Path(sig).open() as f:
-                sigobj = signature.signature_import(self.code, f.read())
+                sigobj = signature.signature_import(
+                    self.code, f.read()
+                )
             ver = groupsig.verify(sigobj, digest, self.grpkey)
             logging.info(f"Signature verified: {ver}")
             return ver
