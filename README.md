@@ -1,5 +1,5 @@
 # TEE integration
-This repository contains the code needed to test the libgroupsig
+gThis repository contains the code needed to test the libgroupsig
 library inside the TEE.
 
 - [Setup docker container + QEMU](#setup-docker-container-qemu)
@@ -12,6 +12,7 @@ library inside the TEE.
       - [Option 1: Command line interface (CLI)](#option-1-command-line-interface-cli)
       - [Option 2: Python library](#option-2-python-library)
     - [Docker](#docker)
+- [Tests](#tests)
 
 ## Setup docker container + QEMU
 ### Preconfiguration
@@ -285,3 +286,12 @@ Monitors/Revokers client image
 ```bash
 docker run --rm -it --network "host" -v $PWD/scripts/monitors:/tmp/crypto glcr.gicp.es/spirs/tee-integration:client-mon -r -C /tmp/crypto/usr1.crt -K /tmp/crypto/usr1.key -H 127.0.0.1
 ```
+
+## Tests
+We have developed several test cases using pytest to verify the correct functionality
+of the API server and clients. The code can be found in the dorectory `host/tests`
+```bash
+python3 host/tests/run_tests.py -h
+python3 host/tests/run_tests.py --cov
+```
+> pandas package is required to process the output of the commands executed
