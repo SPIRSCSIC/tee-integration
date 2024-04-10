@@ -95,7 +95,7 @@ mkdir -p spirs_tee_sdk/crypto && cp -r scripts/{gms,monitors,producers,chain.pem
 
 Launch the `spirs_keystone:22.04 `container in detached mode
 ```bash
-docker run --name spirs -it --rm -d -v $PWD/spirs_tee_sdk:/spirs_tee_sdk spirs_keystone:22.04
+docker run --name spirs -it --rm -d -p 5000:5000 -v $PWD/spirs_tee_sdk:/spirs_tee_sdk spirs_keystone:22.04
 ```
 > Change the -v path accordingly so `spirs_tee_sdk` directory is mounted inside the container
 

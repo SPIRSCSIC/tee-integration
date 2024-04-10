@@ -23,7 +23,7 @@ cont=$(docker ps -q --filter name="^$CNAME$")
 if [ -z "$cont" ]; then
     echo "[STEP 1/8] Starting container..."
     /usr/bin/time -f "1;Start up container;%E" -o $SETUP_LOG --append \
-                  docker run --name $CNAME -it --rm -d -v $PWD/$REPO:/spirs_tee_sdk spirs_keystone:22.04
+                  docker run --name $CNAME -it --rm -d -p 5000:5000 -v $PWD/$REPO:/spirs_tee_sdk spirs_keystone:22.04
 
     CFG=.config
     DEFCFG=riscv64_cva6_spirs_defconfig
