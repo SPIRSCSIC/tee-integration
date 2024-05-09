@@ -1,0 +1,17 @@
+FROM ubuntu:jammy AS build
+RUN apt update -qq && apt install -y --no-install-recommends --no-install-suggests \
+    build-essential cmake libssl-dev git ca-certificates \
+    && apt-get clean -y && rm -rf /var/lib/apt/lists/* && \
+    git clone https://gitlab.gicp.es/spirs/libgroupsig.git /libgroupsig && \
+    cd /libgroupsig && cmake -B build && make -C build
+
+FROM ubuntu:jammy AS final
+COPY --from=build /libgroupsig /libgroupsig
+RUN apt update -qq && apt install -y --no-install-recommends --no-install-suggests \
+     python3 python3-pip python3-dev libssl-dev g++ && apt-get clean -y && rm -rf /var/lib/apt/lists/* && \
+    cd /libgroupsig/src/wrappers/python/ && pip install requests && \
+    python3 setup.py bdist_wheel && \
+    pip install dist/pygroupsig-1.1.0-*.whl
+ARG client=client.py
+COPY host/gicp_api/${client} /libgroupsig
+ENTRYPOINT ["python3", "/libgroupsig/${client}"]

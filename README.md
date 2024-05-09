@@ -1,11 +1,12 @@
 # TEE integration
-gThis repository contains the code needed to test the libgroupsig
+This repository contains the code needed to test the libgroupsig
 library inside the TEE.
 
 - [Setup docker container + QEMU](#setup-docker-container-qemu)
-    - [Preconfiguration](#preconfiguration)
-    - [Automated process](#automated-process)
     - [Manual process](#manual-process)
+        - [Using preconfigured image](#using-preconfigured-image)
+        - [Mounting your own repository](#mounting-your-own-repository)
+    - [Automated process](#automated-process)
 - [API](#api)
 - [Clients](#clients)
     - [Deployment](#deployment)
@@ -14,50 +15,27 @@ library inside the TEE.
     - [Docker](#docker)
 - [Tests](#tests)
 
-## Setup docker container + QEMU
-### Preconfiguration
-You need the container built from [spirs_tee_sdk](https://gitlab.com/spirs_eu/spirs_tee_sdk)
-(named as `spirs_keystone:22.04`).
-If you have not compiled it yet, create a file named `token` with your gitlab credentials
-in the directory `spirs_tee_sdk/docker`, using the following the format
+## Setup docker container
+We have prepared several container images with the preconfigured QEMU. We provide an
+image with everything packed and another one where the repository must be mounted.
 
-```
-username=your_username
-password=your_password_or_token
-```
-
-Patch it to use latest ubuntu version (22.04)
+### Manual process
+#### Using preconfigured image
+Run `glcr.gicp.es/spirs/tee-integration:latest` container in detached mode
 ```bash
-patch -u spirs_tee_sdk/docker/Dockerfile -i patches/dockerfile.patch
+docker run --name spirs -it --rm -d -p 5000:5000 -v $PWD/spirs_tee_sdk:/spirs_tee_sdk glcr.gicp.es/spirs/tee-integration:latest
 ```
+> Change the -v path accordingly so `spirs_tee_sdk` directory is mounted inside the container
 
-Then compile the container (it will take around 15~20min)
-
-```bash
-cd spirs_tee_sdk
-DOCKER_BUILDKIT=1 docker build --no-cache --secret=id=gitlab,src=$PWD/docker/token -f docker/Dockerfile -t spirs_keystone:22.04 .
-```
-
-### Automated process
-In order to compile the project, first run the script `setup.sh`
-```bash
-scripts/setup.sh
-```
-
-Then run the script `container.sh`
-```bash
-cd .. # if you are inside spirs_tee_sdk directory
-scripts/container.sh
-```
-
-Finally connect to `spirs` container and run the command to start qemu
+Connect to the container and compile the project
 ```bash
 docker exec -it spirs bash
 cd /spirs_tee_sdk
-make -C build -j qemu
+cmake -B build && make -C build
+make -C build -j image && make -C build -j qemu
 ```
 
-### Manual process
+#### Mounting your own repository
 The first step is to clone the dependencies,
 [libgroupsig](https://gitlab.gicp.es/spirs/libgroupsig.git) and
 [mondrian](https://gitlab.gicp.es/spirs/mondrian.git)
@@ -68,23 +46,23 @@ git clone --depth 1 https://gitlab.gicp.es/spirs/libgroupsig.git spirs_tee_sdk/m
 git clone --depth 1 https://gitlab.gicp.es/spirs/mondrian.git spirs_tee_sdk/modules/mondrian
 ```
 
-Patch CMakeLists.txt files from the sdk to include our changes
-```bash
-patch -u spirs_tee_sdk/enclave/CMakeLists.txt -i patches/cmakelistsenclave.patch
-patch -u spirs_tee_sdk/host/CMakeLists.txt -i patches/cmakelistshost.patch
-patch -u spirs_tee_sdk/CMakeLists.txt -i patches/cmakelists.patch
-patch -u spirs_tee_sdk/modules/libgroupsig/src/wrappers/python/pygroupsig/libgroupsig_build.py -i patches/pygroupsig.patch
-```
-
 Copy the required files to compile our project
 ```bash
-cp -r modules/libgroupsig/tee spirs_tee_sdk/modules/libgroupsig
-cp -r modules/mondrian/tee spirs_tee_sdk/modules/mondrian
 cp groupsig.cmake groupsig_import.cmake spirs_tee_sdk
 cp -r enclave/{gicp,ta_callbacks_gicp.c} spirs_tee_sdk/enclave/
 cp enclave/include/ta_shared_gicp.h spirs_tee_sdk/enclave/include/
 cp enclave/tee_internal_api/include/tee_ta_api_gicp.h spirs_tee_sdk/enclave/tee_internal_api/include/
 cp -r host/{gicp_api,host_gicp.c} spirs_tee_sdk/host/
+cp -r modules/libgroupsig/tee spirs_tee_sdk/modules/libgroupsig
+cp -r modules/mondrian/tee spirs_tee_sdk/modules/mondrian
+```
+
+Patch `CMakeLists.txt` to include our changes
+```bash
+patch -u spirs_tee_sdk/enclave/CMakeLists.txt -i patches/cmakelistsenclave.patch
+patch -u spirs_tee_sdk/host/CMakeLists.txt -i patches/cmakelistshost.patch
+patch -u spirs_tee_sdk/CMakeLists.txt -i patches/cmakelists.patch
+patch -u spirs_tee_sdk/modules/libgroupsig/src/wrappers/python/pygroupsig/libgroupsig_build.py -i patches/pygroupsig.patch
 ```
 
 Generate the crypto material for the demo
@@ -93,42 +71,30 @@ Generate the crypto material for the demo
 mkdir -p spirs_tee_sdk/crypto && cp -r scripts/{gms,monitors,producers,chain.pem} spirs_tee_sdk/crypto
 ```
 
-Launch the `spirs_keystone:22.04 `container in detached mode
+Launch the `glcr.gicp.es/spirs/tee-integration:norepo` container in detached mode
 ```bash
-docker run --name spirs -it --rm -d -p 5000:5000 -v $PWD/spirs_tee_sdk:/spirs_tee_sdk spirs_keystone:22.04
+docker run --name spirs -it --rm -d -p 5000:5000 -v $PWD/spirs_tee_sdk:/spirs_tee_sdk glcr.gicp.es/spirs/tee-integration:norepo
 ```
 > Change the -v path accordingly so `spirs_tee_sdk` directory is mounted inside the container
-
-Patch the buildroot `.config` file to install flask and `run-qemu.sh.in` script template
-```bash
-docker cp spirs:/keystone/build/buildroot.build/.config .
-patch -u .config -i patches/flaskinstall.patch
-docker cp .config spirs:/keystone/build/buildroot.build/
-
-docker cp spirs:/keystone/conf/riscv64_cva6_spirs_defconfig .
-patch -u riscv64_cva6_spirs_defconfig -i patches/flaskdefconfig.patch
-docker cp riscv64_cva6_spirs_defconfig spirs:/keystone/conf/
-
-docker cp spirs:/keystone/scripts/run-qemu.sh.in .
-patch -u run-qemu.sh.in -i patches/flaskport.patch
-docker cp run-qemu.sh.in spirs:/keystone/scripts/
-```
-
-Compile buildroot with new the changes
-```bash
-docker exec spirs make -C build/buildroot.build python3-dirclean all
-```
 
 Connect to the container and compile the project
 ```bash
 docker exec -it spirs bash
-cd /spirs_tee_sdk
 cmake -B build && make -C build
-# Needed to test libgroupsig client
-cmake -B build/libgroupsig modules/libgroupsig && make -C build/libgroupsig
-apt update && apt install -y python3-pip && python3 -m pip install requests
-cd modules/libgroupsig/src/wrappers/python/ && python3 setup.py bdist_wheel && pip install dist/pygroupsig-1.1.0-cp310-cp310-linux_x86_64.whl
 make -C build -j image && make -C build -j qemu
+```
+
+### Automated process
+Run the script `scripts/container.sh`
+```bash
+# cd .. # if you are inside spirs_tee_sdk directory
+scripts/container.sh
+```
+
+Finally connect to `spirs` container and run the command to start qemu
+```bash
+docker exec -it spirs bash
+make -C build -j qemu
 ```
 
 ## API
@@ -212,14 +178,9 @@ python3 gicp_api/client_mon.py -v -a path/ASSET -S path/SIGNATURE -C path/CERT -
 
 We have prepared a small demo showing the functionality
 
-Configure the repository to compile the using SPIRS toolchain
-<a href="https://asciinema.gicp.es/a/echDqp0AkRYeFJab982UDSiBK" target="_blank">
-    <img src="https://asciinema.gicp.es/a/echDqp0AkRYeFJab982UDSiBK.svg"/>
-</a>
-
-Start containers and compile the groupsig package
-<a href="https://asciinema.gicp.es/a/FEmr9eOaABRejHbX4BIxOj3c7" target="_blank">
-    <img src="https://asciinema.gicp.es/a/FEmr9eOaABRejHbX4BIxOj3c7.svg"/>
+Start containers and compile the groupsig library
+<a href="https://asciinema.gicp.es/a/0oFaa9m41xD2RDogANcIYqfqN" target="_blank">
+    <img src="https://asciinema.gicp.es/a/0oFaa9m41xD2RDogANcIYqfqN.svg"/>
 </a>
 
 Generate groups and start servers. Register entities and sign/verify/revoke/check-status

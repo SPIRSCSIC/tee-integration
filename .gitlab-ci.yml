@@ -1,0 +1,60 @@
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  CI_REGISTRY: luthien.itefi.csic.es:10521
+  IMAGE: $CI_REGISTRY/$CI_PROJECT_PATH
+
+default:
+  image: docker:26.1
+  services:
+    - name: docker:26.1-dind
+      command: ["--insecure-registry=luthien.itefi.csic.es:10521"]
+
+container:
+  stage: build
+  tags:
+    - runner-1
+  variables:
+    BUILD_STAGE: $IMAGE:stage-build
+    INTERM_STAGE: $IMAGE:stage-intermediate
+    FINAL_STAGE: $IMAGE:stage-final
+    LAT_IMAGE : $IMAGE:latest
+    NR_IMAGE: $IMAGE:norepo
+  before_script:
+    - |
+      cat << EOF > /tmp/token
+      username=oauth2
+      password=$SPIRS_TOKEN
+      EOF
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+  script:
+    - docker build --target build --cache-from $BUILD_STAGE --secret=id=gitlab,src=/tmp/token -t $BUILD_STAGE -f docker/Dockerfile .
+    - docker push $BUILD_STAGE
+    - docker build --target intermediate --secret=id=gitlab,src=/tmp/token -t $INTERM_STAGE -f docker/Dockerfile .
+    - docker push $INTERM_STAGE
+    - docker build --secret=id=gitlab,src=/tmp/token -t $FINAL_STAGE -t $LAT_IMAGE -f docker/Dockerfile .
+    - docker push $FINAL_STAGE
+    - docker push $LAT_IMAGE
+    - sed -i '$s/^/#/' docker/Dockerfile
+    - docker build --secret=id=gitlab,src=/tmp/token -t $NR_IMAGE -f docker/Dockerfile .
+    - docker push $NR_IMAGE
+
+clients:
+  stage: build
+  tags:
+    - runner-2
+  variables:
+    CLP_IMAGE: $IMAGE:client-prod
+    CLM_IMAGE: $IMAGE:client-mon
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+  script:
+    - docker build -t $CLP_IMAGE -f docker/Dockerfile.client .
+    - docker push $CLP_IMAGE
+    - docker build --build-arg client=client_mon.py -t $CLM_IMAGE -f docker/Dockerfile.client .
+    - docker push $CLM_IMAGE

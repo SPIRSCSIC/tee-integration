@@ -1,72 +1,142 @@
 #!/bin/bash
 
-[ -n "$1" ] && CNAME="$1" || \
-        CNAME=spirs
-
-[ -n "$2" ] && REPO="$2" || \
-        REPO=spirs_tee_sdk
-
-# Update API files in the SDK
-cmp -s enclave/gicp/toolbox.c $REPO/enclave/gicp/toolbox.c && (cp enclave/gicp/toolbox.c $REPO/enclave/gicp/ && changed=1)
-cp host/gicp_api/{server,client,client_mon}.py $REPO/host/gicp_api/
-
-# Update test files in the SDK
-cp host/tests/{.coveragerc,test_static.py} $REPO/host/gicp_api/
-
+CNAME=spirs
+REPO=spirs_tee_sdk
+IMAGE=glcr.gicp.es/spirs/tee-integration:norepo
+OUT=/dev/null
 RES=host/tests/results
 SETUP_LOG=$RES/performance.log
 mkdir -p $RES
 mv $SETUP_LOG $SETUP_LOG.bak > /dev/null
 echo -e "Step;Description;Time([hh:]mm:ss.ss)" > $SETUP_LOG
 
-cont=$(docker ps -q --filter name="^$CNAME$")
-if [ -z "$cont" ]; then
-    echo "[STEP 1/8] Starting container..."
-    /usr/bin/time -f "1;Start up container;%E" -o $SETUP_LOG --append \
-                  docker run --name $CNAME -it --rm -d -p 5000:5000 -v $PWD/$REPO:/spirs_tee_sdk spirs_keystone:22.04
+clone_dep () {
+    [ ! -d "$REPO" ] && \
+        git clone --depth 1 https://gitlab.com/spirs_eu/spirs_tee_sdk "$REPO" && \
+        patch_sdk
+    [ ! -d "$REPO/modules/libgroupsig" ] && \
+        git clone --depth 1 https://gitlab.gicp.es/spirs/libgroupsig.git "$REPO/modules/libgroupsig" && \
+        patch_gs
+    [ ! -d "$REPO/modules/mondrian" ] && \
+        git clone --depth 1 https://gitlab.gicp.es/spirs/mondrian.git "$REPO/modules/mondrian" && \
+        patch_mon
+    [ -n "$patch_sdk" ] && patch_sdk
+    [ -n "$patch_gs" ] && patch_gs
+    [ -n "$patch_mon" ] && patch_mon
+}
 
-    CFG=.config
-    DEFCFG=riscv64_cva6_spirs_defconfig
-    RUN=run-qemu.sh.in
+patch_sdk () {
+    cp groupsig.cmake groupsig_import.cmake "$REPO"
+    cp -r enclave/{gicp,ta_callbacks_gicp.c} "$REPO/enclave/"
+    cp enclave/include/ta_shared_gicp.h "$REPO/enclave/include/"
+    cp enclave/tee_internal_api/include/tee_ta_api_gicp.h "$REPO/enclave/tee_internal_api/include/"
+    cp -r host/{gicp_api,host_gicp.c} "$REPO/host/"
+    (cd scripts && ./crypto.sh gms monitors producers)
+    mkdir -p "$REPO/crypto" && cp -r scripts/{gms,monitors,producers,chain.pem} "$REPO/crypto"
+    patch -u "$REPO/enclave/CMakeLists.txt" -i patches/cmakelistsenclave.patch
+    patch -u "$REPO/host/CMakeLists.txt" -i patches/cmakelistshost.patch
+    patch -u "$REPO/CMakeLists.txt" -i patches/cmakelists.patch
+}
 
-    echo "[STEP 2/8] Patching..."
-    docker cp $CNAME:/keystone/build/buildroot.build/$CFG . && patch -f -u $CFG -i patches/flaskinstall.patch
-    docker cp $CFG $CNAME:/keystone/build/buildroot.build/ && rm $CFG
+patch_mon () {
+    cp -r modules/mondrian/tee "$REPO/modules/mondrian"
+}
 
-    docker cp $CNAME:/keystone/conf/$DEFCFG . && patch -f -u $DEFCFG -i patches/flaskdefconfig.patch
-    docker cp $DEFCFG $CNAME:/keystone/conf/ && rm $DEFCFG
+patch_gs () {
+    cp -r modules/libgroupsig/tee "$REPO/modules/libgroupsig"
+    patch -u "$REPO/modules/libgroupsig/src/wrappers/python/pygroupsig/libgroupsig_build.py" -i patches/pygroupsig.patch
+}
 
-    docker cp $CNAME:/keystone/scripts/$RUN . && patch -f -u $RUN -i patches/flaskport.patch
-    docker cp $RUN $CNAME:/keystone/scripts/ && rm $RUN
+usage () {
+    echo "Usage: container.sh [-r|--repo DIR] [-n|--name NAME] [-b|--build] [--verbose] [--debug] [-h]"
+    echo
+    echo "       -t|--test        Install pytest dependencies"
+    echo "       -b|--build       Force rebuilding libgroupsig and tee application"
+    echo "       -r|--repo DIR    Location of the repository to mount in the container"
+    echo "       -n|--name NAME   Name to use when launching the container"
+    exit $1
+}
 
-    echo "[STEP 3/8] Recompiling python3 buildroot"
-    /usr/bin/time -f "3;Recompiling python3 buildroot;%E" -o $SETUP_LOG --append \
-                  docker exec $CNAME make -C build/buildroot.build python3-dirclean all
+while [ $# -gt 0 ]; do
+    case $1 in
+        -t|--test)
+            _test=1
+            shift
+            ;;
+        -r|--repo)
+            REPO="$2"
+            shift 2
+            ;;
+        -n|--name)
+            CNAME="$2"
+            shift 2
+            ;;
+        -b|--build)
+            _build=1
+            shift
+            ;;
+        --verbose)
+            OUT=/dev/tty
+            shift
+            ;;
+        --debug)
+            set -x
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "[!] Parameter $1 not recognized"
+            usage 1
+            ;;
+    esac
+done
 
-    echo "[STEP 4/8] Installing python dependencies"
-    /usr/bin/time -f "4;Installing python dependencies;%E" -o $SETUP_LOG  --append \
-                  docker exec $CNAME sh -c 'apt update && apt install -y python3-pip && pip install requests pytest pytest-cov pytest-json-report'
-    changed=1
+clone_dep
+# Update API files in the SDK
+cmp -s enclave/gicp/toolbox.c "$REPO/enclave/gicp/toolbox.c" && (cp enclave/gicp/toolbox.c "$REPO/enclave/gicp/" && changed=1)
+cp host/gicp_api/{server,client,client_mon}.py "$REPO/host/gicp_api/"
+
+if [ -n "$_test" ]; then
+    # Update test files in the SDK
+    cp host/tests/{.coveragerc,test_static.py} "$REPO/host/gicp_api/"
 fi
 
-if [ -n "$changed" ]; then
-    # echo "[STEP 5/8] Building enclave"
-    # /usr/bin/time -f "[*] 5;Building enclave;%E" -o $SETUP_LOG  --append \
-        # docker exec $CNAME sh -c 'cmake -B /spirs_tee_sdk/build /spirs_tee_sdk && make -C /spirs_tee_sdk/build'
+cont=$(docker ps -q --filter name="^$CNAME$")
+if [ -z "$cont" ]; then
+    echo "[STEP 1/2] Starting container..."
+    /usr/bin/time -f "1;Start up container;%E" -o $SETUP_LOG --append \
+                  docker run --name "$CNAME" -it --rm -d -p 5000:5000 -v "$PWD/$REPO":/spirs_tee_sdk "$IMAGE"
 
-    echo "[STEP 5/8] Building enclave (debug)"
-    /usr/bin/time -f "5;Building enclave (debug);%E" -o $SETUP_LOG  --append \
-                  docker exec $CNAME sh -c 'cmake -B /spirs_tee_sdk/build /spirs_tee_sdk -DCMAKE_BUILD_TYPE=Debug && make -C /spirs_tee_sdk/build'
+    echo "[STEP 2/2] Installing python dependencies"
+    if [ -n "$_test" ]; then
+        extra="pytest pytest-cov pytest-json-report"
+    fi
+    docker exec "$CNAME" sh -c "test -f /spirs_tee_sdk/modules/libgroupsig/src/wrappers/python/dist/pygroupsig-1.1.0-*.whl"
+    [ $? -eq 0 ] && extra="$extra /spirs_tee_sdk/modules/libgroupsig/src/wrappers/python/dist/pygroupsig-1.1.0-*.whl"
+    /usr/bin/time -f "2;Installing python dependencies;%E" -o $SETUP_LOG  --append \
+                  docker exec "$CNAME" sh -c "apt update -qq && apt install -y python3 python3-dev python3-pip && pip install requests $extra" > $OUT 2>&1
+fi
 
-    echo "[STEP 6/8] Building libgroupsig"
-    /usr/bin/time -f "6;Building libgroupsig;%E" -o $SETUP_LOG  --append \
-                  docker exec $CNAME sh -c 'cmake -B /spirs_tee_sdk/build/libgroupsig /spirs_tee_sdk/modules/libgroupsig && make -C /spirs_tee_sdk/build/libgroupsig'
+if [ ! -d "$REPO/build" ] || [ -n "$changed" ] || [ -n "$_build" ]; then
+    # echo "[STEP 1/4] Building enclave (debug)"
+    # /usr/bin/time -f "5;Building enclave (debug);%E" -o $SETUP_LOG  --append \
+    #               docker exec "$CNAME" sh -c 'cmake -B build -DCMAKE_BUILD_TYPE=Debug && make -C build' > $OUT 2>&1
 
-    echo "[STEP 7/8] Building libgroupsig python wrapper"
-    /usr/bin/time -f "7;Building libgroupsig python wrapper;%E" -o $SETUP_LOG  --append \
-                  docker exec $CNAME sh -c 'cd /spirs_tee_sdk/modules/libgroupsig/src/wrappers/python/ && python3 setup.py bdist_wheel && pip install dist/pygroupsig-1.1.0-cp310-cp310-linux_x86_64.whl'
+    echo "[STEP 1/4] Building enclave"
+    /usr/bin/time -f "1;Building enclave;%E" -o $SETUP_LOG  --append \
+                  docker exec "$CNAME" sh -c 'cmake -B build && make -C build' > $OUT 2>&1
 
-    echo "[STEP 8/8] Building image"
-    /usr/bin/time -f "8;Building image;%E" -o $SETUP_LOG  --append \
-                  docker exec $CNAME sh -c 'make -C /spirs_tee_sdk/build -j image'
+    echo "[STEP 2/4] Building libgroupsig"
+    /usr/bin/time -f "2;Building libgroupsig;%E" -o $SETUP_LOG  --append \
+                  docker exec "$CNAME" sh -c 'cmake -B build/libgroupsig modules/libgroupsig && make -C /spirs_tee_sdk/build/libgroupsig' > $OUT 2>&1
+
+    echo "[STEP 3/4] Building libgroupsig python wrapper"
+    /usr/bin/time -f "3;Building libgroupsig python wrapper;%E" -o $SETUP_LOG  --append \
+                  docker exec "$CNAME" sh -c 'cd modules/libgroupsig/src/wrappers/python/ && python3 setup.py bdist_wheel && pip install dist/pygroupsig-1.1.0-*.whl' > $OUT 2>&1
+
+    echo "[STEP 4/4] Building image"
+    /usr/bin/time -f "4;Building image;%E" -o $SETUP_LOG  --append \
+                  docker exec "$CNAME" sh -c 'make -C build -j image' > $OUT 2>&1
 fi

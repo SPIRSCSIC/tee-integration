@@ -38,7 +38,16 @@ def _ssh_qemu_cmd(cmd):
 
 
 def setup_server(alg):
-    # TODO: integrate commands into script (eg. bash setup_server.sh <alg>)
+    # copy crypto material
+    subprocess.run(
+        f"docker exec -t {CONT_NAME} scp"
+        f" -i /keystone/build/overlay/root/.ssh/id_rsa "
+        f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+        f"-P 7777 -r crypto root@localhost:/root",
+        shell=True,
+        stdout=OUTPUT,
+        stderr=OUTPUT,
+    )
     # the server is started using <algorithm>
     print(f"[*] Creating signature group for monitors ({alg})")
     _ssh_qemu_cmd(f"./gdemos.ke groupsig -s {alg} -a _mon --quiet")
@@ -54,18 +63,9 @@ def setup_server(alg):
 
 def setup_container():
     root = CWD.parents[2]
-    if not (root / SDK_NAME).is_dir():
-        print("[*] Setting up environment [scripts/setup.sh]")
-        subprocess.run(
-            f"bash scripts/setup.sh {SDK_NAME}",
-            cwd=root,
-            shell=True,
-            stdout=OUTPUT,
-            stderr=OUTPUT,
-        )
     print("[*] Setting up container [scripts/container.sh] ETA 5~10m")
     subprocess.run(
-        f"bash scripts/container.sh {CONT_NAME} {SDK_NAME}",
+        f"bash scripts/container.sh -n {CONT_NAME} -r {SDK_NAME} --test",
         cwd=root,
         shell=True,
         stdout=OUTPUT,
@@ -82,7 +82,7 @@ def setup_container():
     print("[*] Compiling qemu image in the container...")
     # WITHIN DOCKER
     ret = subprocess.run(
-        f"docker exec -id {CONT_NAME} make -C /spirs_tee_sdk/build -j qemu",
+        f"docker exec -id {CONT_NAME} make -C build -j qemu",
         shell=True,
         stdout=OUTPUT,
         stderr=OUTPUT,
