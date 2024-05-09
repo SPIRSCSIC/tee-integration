@@ -1,6 +1,7 @@
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == "master"
 
 variables:
   DOCKER_HOST: tcp://docker:2375
@@ -35,8 +36,8 @@ container:
   stage: build
   when: manual
   variables:
-    LAT_IMAGE: $IMAGE:latest
     NR_IMAGE: $IMAGE:norepo
+    LAT_IMAGE: $IMAGE:latest
   script:
     - sed -i "1s@glcr.gicp.es@$CI_REGISTRY@" docker/Dockerfile
     - sed -i '$s/^/#/' docker/Dockerfile
