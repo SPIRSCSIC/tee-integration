@@ -1,34 +1,4 @@
-FROM ubuntu:22.04 AS build
-LABEL builder=true
-ENV KEYSTONE_BUILD_DIR=/keystone/build
-ENV KEYSTONE_SDK_DIR=/keystone/sdk/build64
-ENV RISCV=/keystone/riscv64
-ENV RISCV_MUSL=/opt/spirs/riscv64-musl/riscv-musl
-ENV PATH=$RISCV/bin:$RISCV_MUSL/bin:$PATH
-RUN apt update -qq && \
-    apt install -y --no-install-recommends --no-install-suggests \
-    git wget p7zip-full cmake build-essential quilt makeself \
-    python3 libpython3-dev ninja-build pkg-config libglib2.0-dev \
-    libpixman-1-dev libslirp-dev libcap-ng-dev unzip rsync bc cpio \
-    libgmp-dev dbus ca-certificates file locales && \
-    apt-get clean -y && rm -rf /var/lib/apt/lists/*
-
-COPY docker/credential-helper /usr/local/bin/
-RUN --mount=type=secret,id=gitlab \
-    git config --global credential.helper /usr/local/bin/credential-helper && \
-    git clone --depth 1 --branch spirs https://gitlab.com/spirs_eu/keystone-enclave/keystone && \
-    cd /keystone && bash -c "./fast-setup.sh && source ./source.sh && ./rebuild.sh '-DSM_PLATFORM=spirs'"
-WORKDIR /keystone
-
-COPY patches /patches/
-RUN bash -c \
-    "patch -u build/buildroot.build/.config -i /patches/flaskinstall.patch && \
-    patch -u conf/riscv64_cva6_spirs_defconfig -i /patches/flaskdefconfig.patch && \
-    patch -u scripts/run-qemu.sh.in -i /patches/flaskport.patch && \
-    make -C build/buildroot.build python3-dirclean all"
-
-FROM build AS intermediate
-LABEL builder=true
+FROM glcr.gicp.es/spirs/tee-integration:optimized AS intermediate
 WORKDIR /spirs_tee_sdk
 RUN --mount=type=secret,id=gitlab \
     apt update -qq && apt install -y --no-install-recommends --no-install-suggests \
@@ -56,7 +26,6 @@ RUN --mount=type=secret,id=gitlab \
     make -C build/libgroupsig && make -C build -j image
 
 FROM ubuntu:22.04 AS final
-LABEL builder=false
 ENV KEYSTONE_BUILD_DIR=/keystone/build
 ENV KEYSTONE_SDK_DIR=/keystone/sdk/build64
 ENV RISCV=/keystone/riscv64

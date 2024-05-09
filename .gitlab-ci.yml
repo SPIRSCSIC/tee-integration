@@ -1,6 +1,5 @@
 workflow:
   rules:
-    - if: $CI_COMMIT_BRANCH == "master"
     - if: $CI_PIPELINE_SOURCE == "web"
 
 variables:
@@ -15,44 +14,44 @@ default:
     - name: docker:26.1-dind
       command: ["--insecure-registry=luthien.itefi.csic.es:10521"]
 
+before_script:
+  - |
+    cat << EOF > /tmp/token
+    username=oauth2
+    password=$SPIRS_TOKEN
+    EOF
+  - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+
+optimized:
+  stage: build
+  when: manual
+  variables:
+    OPT_IMAGE: $IMAGE:optimized
+  script:
+    - docker build --secret=id=gitlab,src=/tmp/token -t $OPT_IMAGE -f docker/Dockerfile.optimized .
+    - docker push $OPT_IMAGE
+
 container:
   stage: build
-  tags:
-    - runner-1
+  when: manual
   variables:
-    BUILD_STAGE: $IMAGE:stage-build
-    INTERM_STAGE: $IMAGE:stage-intermediate
-    FINAL_STAGE: $IMAGE:stage-final
-    LAT_IMAGE : $IMAGE:latest
+    LAT_IMAGE: $IMAGE:latest
     NR_IMAGE: $IMAGE:norepo
-  before_script:
-    - |
-      cat << EOF > /tmp/token
-      username=oauth2
-      password=$SPIRS_TOKEN
-      EOF
-    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
   script:
-    - docker build --target build --cache-from $BUILD_STAGE --secret=id=gitlab,src=/tmp/token -t $BUILD_STAGE -f docker/Dockerfile .
-    - docker push $BUILD_STAGE
-    - docker build --target intermediate --secret=id=gitlab,src=/tmp/token -t $INTERM_STAGE -f docker/Dockerfile .
-    - docker push $INTERM_STAGE
-    - docker build --secret=id=gitlab,src=/tmp/token -t $FINAL_STAGE -t $LAT_IMAGE -f docker/Dockerfile .
-    - docker push $FINAL_STAGE
-    - docker push $LAT_IMAGE
+    - sed -i "1s@glcr.gicp.es@$CI_REGISTRY@" docker/Dockerfile
     - sed -i '$s/^/#/' docker/Dockerfile
     - docker build --secret=id=gitlab,src=/tmp/token -t $NR_IMAGE -f docker/Dockerfile .
     - docker push $NR_IMAGE
+    - sed -i '$s/#//' docker/Dockerfile
+    - docker build --secret=id=gitlab,src=/tmp/token -t $LAT_IMAGE -f docker/Dockerfile .
+    - docker push $LAT_IMAGE
 
 clients:
   stage: build
-  tags:
-    - runner-2
+  when: manual
   variables:
     CLP_IMAGE: $IMAGE:client-prod
     CLM_IMAGE: $IMAGE:client-mon
-  before_script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
   script:
     - docker build -t $CLP_IMAGE -f docker/Dockerfile.client .
     - docker push $CLP_IMAGE
