@@ -23,16 +23,14 @@ image with everything packed and another one where the repository must be mounte
 #### Using preconfigured image
 Run `glcr.gicp.es/spirs/tee-integration:latest` container in detached mode
 ```bash
-docker run --name spirs -it --rm -d -p 5000:5000 -v $PWD/spirs_tee_sdk:/spirs_tee_sdk glcr.gicp.es/spirs/tee-integration:latest
+docker run --name spirs -it --rm -d -p 5000:5000 glcr.gicp.es/spirs/tee-integration:latest
 ```
-> Change the -v path accordingly so `spirs_tee_sdk` directory is mounted inside the container
+> If you want some sort of persistence, you have to bind-mount the file/directories in the container
 
 Connect to the container and compile the project
 ```bash
 docker exec -it spirs bash
-cd /spirs_tee_sdk
-cmake -B build && make -C build
-make -C build -j image && make -C build -j qemu
+make -C build -j qemu
 ```
 
 #### Mounting your own repository
@@ -84,7 +82,7 @@ cmake -B build && make -C build
 make -C build -j image && make -C build -j qemu
 ```
 
-### Automated process
+### Automated process (compile library)
 Run the script `scripts/container.sh`
 ```bash
 # cd .. # if you are inside spirs_tee_sdk directory

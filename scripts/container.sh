@@ -51,9 +51,11 @@ usage () {
     echo "Usage: container.sh [-r|--repo DIR] [-n|--name NAME] [-b|--build] [--verbose] [--debug] [-h]"
     echo
     echo "       -t|--test        Install pytest dependencies"
-    echo "       -b|--build       Force rebuilding libgroupsig and tee application"
     echo "       -r|--repo DIR    Location of the repository to mount in the container"
     echo "       -n|--name NAME   Name to use when launching the container"
+    echo "       -b|--build       Force rebuilding libgroupsig and tee application"
+    echo "       --verbose        Increase verbosity of script"
+    echo "       --debug          Enable shell script debug mode"
     exit $1
 }
 
