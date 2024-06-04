@@ -249,7 +249,9 @@ class Monitor:
             data = _decode(res, "Decoding revoke token message")
             token = data["msg"]
             sigt = signature.signature_export(
-                groupsig.sign(token, self.memkey, self.grpkey)
+                groupsig.sign(
+                    hashlib.sha256(token.encode()).hexdigest(),
+                    self.memkey, self.grpkey)
             )
             with Path(sig).open() as f:
                 sig64 = f.read()
@@ -402,8 +404,8 @@ def _parse_args():
         "--host",
         "-H",
         metavar="HOST",
-        # required=True,
-        default="localhost",
+        required=True,
+        # default="localhost",
         help="Group signature API host/IP",
     )
     parser.add_argument(
@@ -418,16 +420,16 @@ def _parse_args():
         "--cert",
         "-C",
         metavar="PATH",
-        # required=True,
-        default="../crypto/monitors/usr1.crt",
+        required=True,
+        # default="../crypto/monitors/usr1.crt",
         help="Client certificate",
     )
     parser.add_argument(
         "--key",
         "-K",
         metavar="PATH",
-        # required=True,
-        default="../crypto/monitors/usr1.key",
+        required=True,
+        # default="../crypto/monitors/usr1.key",
         help="Client certificate key",
     )
     parser.add_argument(

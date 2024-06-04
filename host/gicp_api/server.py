@@ -47,9 +47,9 @@ def temp():
 
 def run(cmd, text):
     logging.info(" ".join(cmd))
-    # logging.info(text)
+    logging.info(text)
     out = subprocess.run(cmd, capture_output=True)
-    # logging.info(f"stdout: {out.stdout}\n\nstderr: {out.stderr}")
+    logging.info(f"stdout: {out.stdout}\n\nstderr: {out.stderr}")
     err = False
     if out.stderr:
         msg = ERR.search(out.stderr).group(1)
@@ -57,13 +57,17 @@ def run(cmd, text):
     else:
         msg = OK.search(out.stdout).group(1)
     msg = msg.decode().strip()
-    # logging.info(msg)
+    logging.info(msg)
     return msg, err
 
 
 def save_tokens():
     with open("tokens.json", "w") as f:
         json.dump(TOKENS, f)
+
+def save_nonces():
+    with open("nonces.json", "w") as f:
+        json.dump(NONCES, f)
 
 
 def status(sts, msg):
@@ -197,7 +201,7 @@ def groupsig_join():
         if final.exists():
             tokens[crt_hash] = True
             save_tokens()
-            print(f"found {FINAL_PATH}, removing!")
+            # print(f"found {FINAL_PATH}, removing!")
             final.unlink()
         return status("success", msg)
 
@@ -205,7 +209,8 @@ def groupsig_join():
 @app.get("/groupsig/revoke")
 def groupsig_revoke_nonce():
     token = uuid4()
-    NONCES[token] = False
+    NONCES[str(token)] = False
+    save_nonces()
     return status("success", token)
 
 
@@ -214,49 +219,53 @@ def groupsig_revoke():
     token = request.form.get("token")
     if not token:
         return status("error", "Missing 'token' in body")
-    signaturet = request.form.get("signature_token")
-    if not signaturet:
-        return status("error", "Missing 'signature_token' in body")
-    signature = request.form.get("signature")
-    if not signature:
-        return status("error", "Missing 'signature' in body")
-    file_tok = temp_w(token)
-    file_sigt = temp_w(signaturet)
-    output, err = run(
-        BS
-        + [
-            "groupsig",
-            "--verify",
-            f"{file_sigt.name}",
-            "--message",
-            f"{file_tok.name}",
-            "--affix",
-            ARGS.affix,
-        ],
-        "Verifying signature",
-    )
-    if err:
-        return status("error", output)
-    if output == "0":
-        file_sig = temp_w(signature)
+    if token in NONCES and not NONCES[token]:
+        signaturet = request.form.get("signature_token")
+        if not signaturet:
+            return status("error", "Missing 'signature_token' in body")
+        signature = request.form.get("signature")
+        if not signature:
+            return status("error", "Missing 'signature' in body")
+        file_tok = temp_w(token)
+        file_sigt = temp_w(signaturet)
         output, err = run(
             BS
             + [
                 "groupsig",
-                "--revoke",
-                f"{file_sig.name}",
+                "--verify",
+                f"{file_sigt.name}",
+                "--asset",
+                f"{file_tok.name}",
+                "--affix",
+                ARGS.affix,
             ],
-            "Revoking identity",
+            "Verifying signature",
         )
         if err:
             return status("error", output)
         if output == "1":
-            NONCES[token] = True
-            return status("success", "Identity revoked")
+            file_sig = temp_w(signature)
+            output, err = run(
+                BS
+                + [
+                    "groupsig",
+                    "--revoke",
+                    f"{file_sig.name}",
+                ],
+                "Revoking identity",
+            )
+            if err:
+                return status("error", output)
+            if output == "1":
+                NONCES[token] = True
+                save_nonces()
+                return status("success", "Identity revoked")
+            else:
+                return status("success", output)
         else:
-            return status("success", output)
+            return status("error", "Invalid signature")
     else:
-        return status("error", "Invalid signature")
+        return status("error", "Invalid token or already used")
 
 
 @app.post("/groupsig/status")
@@ -345,6 +354,10 @@ if __name__ == "__main__":
     if tokens_f.is_file():
         with tokens_f.open() as f:
             TOKENS = json.load(f)
+    nonces_f = Path("nonces.json")
+    if nonces_f.is_file():
+        with nonces_f.open() as f:
+            NONCES = json.load(f)
     context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     context.verify_mode = ssl.CERT_REQUIRED
     context.load_cert_chain(certfile=ARGS.cert, keyfile=ARGS.key)

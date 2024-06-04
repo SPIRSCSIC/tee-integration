@@ -268,8 +268,8 @@ def _parse_args():
         "--host",
         "-H",
         metavar="HOST",
-        # required=True,
-        default="localhost",
+        required=True,
+        # default="localhost",
         help="Group signature API host/IP",
     )
     parser.add_argument(
@@ -284,16 +284,16 @@ def _parse_args():
         "--cert",
         "-C",
         metavar="PATH",
-        # required=True,
-        default="../crypto/producers/usr1.crt",
+        required=True,
+        # default="../crypto/producers/usr1.crt",
         help="Client certificate",
     )
     parser.add_argument(
         "--key",
         "-K",
         metavar="PATH",
-        # required=True,
-        default="../crypto/producers/usr1.key",
+        required=True,
+        # default="../crypto/producers/usr1.key",
         help="Client certificate key",
     )
     parser.add_argument(

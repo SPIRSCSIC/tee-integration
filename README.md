@@ -6,6 +6,7 @@ library inside the TEE.
     - [Manual process](#manual-process)
         - [Using preconfigured image](#using-preconfigured-image)
         - [Mounting your own repository](#mounting-your-own-repository)
+        - [Post configuration](#post-configuration)
     - [Automated process](#automated-process)
 - [API](#api)
 - [Clients](#clients)
@@ -82,6 +83,16 @@ cmake -B build && make -C build
 make -C build -j image && make -C build -j qemu
 ```
 
+#### Post configuration
+If you want to execute the clients from the container, you will need to compile libgroupsig in a "normal" way,
+using x86\_64 gcc, install python dependencies, compile the python wrapper and install the generated wheel.
+```bash
+docker exec -it spirs bash
+cmake -B build/libgroupsig modules/libgroupsig && make -C build/libgroupsig
+apt update -qq && apt install -y python3-dev python3-pip requests
+cd modules/libgroupsig/src/wrappers/python/ && python3 setup.py bdist_wheel && pip install dist/pygroupsig-1.1.0-*.whl
+```
+
 ### Automated process (compile library)
 Run the script `scripts/container.sh`
 ```bash
@@ -98,6 +109,18 @@ make -C build -j qemu
 ## API
 We have uploaded the API specification using the OpenAPI v3 standard. Check it
 at https://app.swaggerhub.com/apis/schica/groupsig/1.0.0
+
+> **Note**: There are two functions offered in the `gdemos.ke` executable that are not available
+> in the API: `--sign/--verify`, these functions are provided as a way to
+> sign/verify without using python library, however it is very inadvisable due
+> to the overhead added when creating+opening a connection with the TA (slow) and
+> the fact that you would need to have access to a member key.
+> ```bash
+> ./gdemos.ke groupsig --sign /root/sig --asset /root/asset --mkey /root/mkey
+> ./gdemos.ke groupsig --verify /root/sig --asset /root/asset
+> ```
+> In a future iteration of the library, we aim to move this functionality to the RA so that
+> the overhead added by the TA is removed.
 
 ## Clients
 The code of the clients (producers and monitors) can be found under
