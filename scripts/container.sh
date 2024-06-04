@@ -6,6 +6,7 @@ IMAGE=glcr.gicp.es/spirs/tee-integration:norepo
 OUT=/dev/null
 RES=host/tests/results
 SETUP_LOG=$RES/performance.log
+PORT=5000
 mkdir -p $RES
 mv $SETUP_LOG $SETUP_LOG.bak > /dev/null
 echo -e "Step;Description;Time([hh:]mm:ss.ss)" > $SETUP_LOG
@@ -54,6 +55,7 @@ usage () {
     echo "       -r|--repo DIR    Location of the repository to mount in the container"
     echo "       -n|--name NAME   Name to use when launching the container"
     echo "       -b|--build       Force rebuilding libgroupsig and tee application"
+    echo "       -p|--port        Change default listening port of the server"
     echo "       --verbose        Increase verbosity of script"
     echo "       --debug          Enable shell script debug mode"
     exit $1
@@ -77,6 +79,10 @@ while [ $# -gt 0 ]; do
             _build=1
             shift
             ;;
+        -p|--port)
+            PORT="$2"
+            shift 2
+            ;;
         --verbose)
             OUT=/dev/tty
             shift
@@ -97,7 +103,7 @@ done
 
 clone_dep
 # Update API files in the SDK
-cmp -s enclave/gicp/toolbox.c "$REPO/enclave/gicp/toolbox.c" && (cp enclave/gicp/toolbox.c "$REPO/enclave/gicp/" && changed=1)
+cmp -s enclave/gicp/toolbox.c "$REPO/enclave/gicp/toolbox.c" || (cp enclave/gicp/toolbox.c "$REPO/enclave/gicp/" && changed=1)
 cp host/gicp_api/{server,client,client_mon}.py "$REPO/host/gicp_api/"
 
 if [ -n "$_test" ]; then
@@ -109,7 +115,7 @@ cont=$(docker ps -q --filter name="^$CNAME$")
 if [ -z "$cont" ]; then
     echo "[STEP 1/2] Starting container..."
     /usr/bin/time -f "1;Start up container;%E" -o $SETUP_LOG --append \
-                  docker run --name "$CNAME" -it --rm -d -p 5000:5000 -v "$PWD/$REPO":/spirs_tee_sdk "$IMAGE"
+                  docker run --name "$CNAME" -it --rm -d -p $PORT:5000 -v "$PWD/$REPO":/spirs_tee_sdk "$IMAGE"
 
     echo "[STEP 2/2] Installing python dependencies"
     if [ -n "$_test" ]; then
@@ -132,7 +138,7 @@ if [ ! -d "$REPO/build" ] || [ -n "$changed" ] || [ -n "$_build" ]; then
 
     echo "[STEP 2/4] Building libgroupsig"
     /usr/bin/time -f "2;Building libgroupsig;%E" -o $SETUP_LOG  --append \
-                  docker exec "$CNAME" sh -c 'cmake -B build/libgroupsig modules/libgroupsig && make -C /spirs_tee_sdk/build/libgroupsig' > $OUT 2>&1
+                  docker exec "$CNAME" sh -c 'cmake -B build/libgroupsig modules/libgroupsig && make -C build/libgroupsig' > $OUT 2>&1
 
     echo "[STEP 3/4] Building libgroupsig python wrapper"
     /usr/bin/time -f "3;Building libgroupsig python wrapper;%E" -o $SETUP_LOG  --append \

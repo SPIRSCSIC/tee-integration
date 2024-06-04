@@ -65,7 +65,7 @@ def setup_container():
     root = CWD.parents[2]
     print("[*] Setting up container [scripts/container.sh] ETA 5~10m")
     subprocess.run(
-        f"bash scripts/container.sh -n {CONT_NAME} -r {SDK_NAME} --test",
+        f"bash scripts/container.sh -n {CONT_NAME} -r {SDK_NAME} -p 5001 --test",
         cwd=root,
         shell=True,
         stdout=OUTPUT,

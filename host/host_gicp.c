@@ -3,9 +3,7 @@
 #include <stdlib.h>
 
 #include <tee_client_api.h>
-
 #include <ta_shared_gicp.h>
-
 
 static void demo_mondrian() {
   TEEC_Result res;
@@ -275,9 +273,9 @@ static void toolbox(int argc, char** argv) {
 
 int host_usage(char** argv) {
   fprintf(stderr,
-         "Usage: %s [demo|benchmark] OPTS\n"
-         "\t demo mondrian|pairings|kty04|ps16]\n"
-         "\t benchmark kty04|ps16\n"
+         "Usage: %s (demo|benchmark|groupsig|mondrian) OPTS\n"
+         "\t demo (mondrian|pairings|kty04|ps16)\n"
+         "\t benchmark (kty04|ps16)\n"
          "\t groupsig [GOPTS]\n"
          "\t mondrian [MOPTS]\n"
          "\t help\n"
@@ -292,33 +290,27 @@ int main(int argc, char** argv) {
   if (argc > 1) {
     if (!strcmp(argv[1], "demo")) {
       if (argc > 2) {
-        if (!strcmp(argv[2], "mondrian")) {
+        if (!strcmp(argv[2], "mondrian"))
           demo_mondrian();
-        } else if (!strcmp(argv[2], "pairings")) {
+        else if (!strcmp(argv[2], "pairings"))
           demo_pairings();
-        } else if (!strcmp(argv[2], "kty04")) {
+        else if (!strcmp(argv[2], "kty04"))
           demo_kty04();
-        } else if (!strcmp(argv[2], "ps16")) {
+        else if (!strcmp(argv[2], "ps16"))
           demo_ps16();
-        }
-      } else {
+      } else
         return host_usage(argv);
-      }
     } else if (!strcmp(argv[1], "benchmark")) {
       if (argc > 2) {
-        if (!strcmp(argv[2], "kty04")) {
+        if (!strcmp(argv[2], "kty04"))
           benchmark_kty04();
-        } else if (!strcmp(argv[2], "ps16")) {
+        else if (!strcmp(argv[2], "ps16"))
           benchmark_ps16();
-        }
-      } else {
+      } else
         return host_usage(argv);
-      }
-    } else {
+    } else
       toolbox(argc, argv);
-    }
-  } else {
+  } else
     return host_usage(argv);
-  }
   return 0;
 }

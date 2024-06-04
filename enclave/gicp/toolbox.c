@@ -8,11 +8,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
 
 #include "groupsig.h"
-#include "kty04.h"
-#include "ps16.h"
-#include "cpy06.h"
 #include "common.h"
 #include "mondrian.h"
 #include "shim/base64.h"
@@ -25,14 +23,17 @@ char GML[1024];
 char CRL[1024];
 char *SIG_PATH = NULL;
 char *MSG_PATH = NULL;
-char *FINAL_PATH = "/root/.last";
+char *MEMKEY = NULL;
+char *ASSET_PATH = NULL;
+char *LAST_PATH = "/root/.last";
 char SCHEME[10];
 groupsig_t *GSIG = NULL;
 int PHASE = -1;
-int CODE = -1;
+uint8_t CODE = 255;
 int REV = 0;
 int STAT = 0;
 int JOIN = 0;
+int SIG = 0;
 int VER = 0;
 static int groupsig_flag;
 static int mondrian_flag;
@@ -51,7 +52,7 @@ void setup_seed() {
 }
 
 void check_ptr(void *ptr, char *msg) {
-  if (ptr == NULL) {
+  if (!ptr) {
     fprintf(stderr, "Error: %s initialization\n", msg);
     exit(1);
   }
@@ -74,7 +75,7 @@ void check_size(int size1, int size2, char *msg) {
 
 int file_readable(char* file) {
   FILE *fp = fopen(file, "r");
-  if (fp == NULL) {
+  if (!fp) {
     return 0;
   } else {
     fclose(fp);
@@ -92,7 +93,9 @@ void check_digit(char* str, char* msg) {
 }
 
 int valid_schemes() {
-  if (!strcmp(SCHEME, "dl21") || !strcmp(SCHEME, "dl21seq"))
+  // It works, but requires special input to sign messages or multiple manager keys
+  if (!strcmp(SCHEME, "dl21") || !strcmp(SCHEME, "dl21seq")
+      || !strcmp(SCHEME, "klap20") || !strcmp(SCHEME, "gl19"))
     return 0;
   return 1;
 }
@@ -106,7 +109,7 @@ void metadata_from_code() {
 }
 
 void scheme_from_code() {
-  strcpy(SCHEME, GSIG->desc->name);
+  strncpy(SCHEME, GSIG->desc->name, 10);
   for (char *p = SCHEME; *p; ++p) *p = tolower(*p);
 }
 
@@ -139,17 +142,27 @@ void save_data(void *data, int type) {
   int (*get_size)(groupsig_key_t *) = &groupsig_grp_key_get_size;
   int (*export)(byte_t **, uint32_t *, groupsig_key_t *) = &groupsig_grp_key_export;
   char *file = GRPKEY;
-  if (type == 1) {
+  switch (type) {
+  case 1:
     msg1 = "mgrkey_export";
     msg2 = "mgrkey";
     file = MGRKEY;
     get_size = &groupsig_mgr_key_get_size;
     export = &groupsig_mgr_key_export;
-  } else if (type == 3) {
+    break;
+  case 3:
     msg1 = "gml_export";
     msg2 = "gml";
     file = GML;
     export = &gml_export;
+    break;
+  case 4:
+    msg1 = "sig_export";
+    msg2 = "sig";
+    file = SIG_PATH;
+    get_size = &groupsig_signature_get_size;
+    export = &groupsig_signature_export;
+    break;
   }
   int len;
   if (type != 3)
@@ -163,12 +176,12 @@ void save_data(void *data, int type) {
     check_size(size, len, msg2);
   char *enc = base64_encode(bytes, size, 0);
   FILE *fp = fopen(file, "w");
-  if (fp != NULL) {
-    fwrite(enc, sizeof(char), strlen(enc), fp);
-    fclose(fp);
-  } else {
+  if (!fp) {
     fprintf(stderr, "Error: File %s cannot be written\n", file);
     exit(1);
+  } else {
+    fwrite(enc, sizeof(char), strlen(enc), fp);
+    fclose(fp);
   }
   free(enc);
 }
@@ -176,16 +189,16 @@ void save_data(void *data, int type) {
 void load_message(message_t **msg) {
   FILE *fp = fopen(MSG_PATH, "r");
   char *data;
-  if (fp != NULL) {
+  if (!fp) {
+    fprintf(stderr, "Error: %s file cannot be read\n", MSG_PATH);
+    exit(1);
+  } else {
     if (!fscanf(fp, "%ms", &data)) {
       fclose(fp);
       fprintf(stderr, "Error: %s incorrect format\n", MSG_PATH);
       exit(1);
     }
     fclose(fp);
-  } else {
-    fprintf(stderr, "Error: %s file cannot be read\n", MSG_PATH);
-    exit(1);
   }
   *msg = message_from_base64(data);
 }
@@ -194,35 +207,44 @@ void load_data(void **data, int type) {
   char *msg1 = "grpkey_import";
   groupsig_key_t *(*import)(unsigned char, unsigned char *, unsigned int) = &groupsig_grp_key_import;
   char *file = GRPKEY;
-  if (type == 1) {
+  switch (type) {
+  case 1:
     msg1 = "mgrkey_import";
     file = MGRKEY;
     import = &groupsig_mgr_key_import;
-  } else if (type == 3) {
+    break;
+  case 2:
+    msg1 = "memkey_import";
+    file = MEMKEY;
+    import = &groupsig_mem_key_import;
+    break;
+  case 3:
     msg1 = "gml_import";
     file = GML;
     import = &gml_import;
-  } else if (type == 4) {
+    break;
+  case 4:
     msg1 = "sig_import";
     file = SIG_PATH;
     import = &groupsig_signature_import;
+    break;
   }
   FILE *fp = fopen(file, "r");
   char *enc;
-  if (fp != NULL) {
+  if (!fp) {
+    fprintf(stderr, "Error: %s file cannot be read\n", file);
+    exit(1);
+  } else {
     if (!fscanf(fp, "%ms", &enc)) {
       fclose(fp);
       fprintf(stderr, "Error: %s incorrect format\n", file);
       exit(1);
     }
     fclose(fp);
-  } else {
-    fprintf(stderr, "Error: %s file cannot be read\n", file);
-    exit(1);
   }
   uint64_t dec_len;
   byte_t *dec_buff = base64_decode(enc, &dec_len);
-  if (CODE == -1) {
+  if (CODE == 255) {
     CODE = dec_buff[0];
     metadata_from_code();
     scheme_from_code();
@@ -256,7 +278,7 @@ void join(message_t *msg,
     exit(1);
   }
   int correct = 0;
-  for(int i=0; i<n_phases; i++) {
+  for(int i = 0; i < n_phases; i++) {
     phases[i] = start + i * 2;
     if (PHASE == phases[i])
       correct = 1;
@@ -278,9 +300,9 @@ void join(message_t *msg,
     print_data(memkey, 2);
     groupsig_mem_key_free(memkey); memkey = NULL;
     save_data(gml, 3);
-    FILE *fp = fopen(FINAL_PATH, "w");
-    if (fp == NULL) {
-      fprintf(stderr, "Error: File %s cannot be written\n", FINAL_PATH);
+    FILE *fp = fopen(LAST_PATH, "w");
+    if (!fp) {
+      fprintf(stderr, "Error: File %s cannot be written\n", LAST_PATH);
       exit(1);
     }
     fclose(fp);
@@ -289,18 +311,20 @@ void join(message_t *msg,
     check_rc(rc, "join_mgr");
     char* out = message_to_base64(msg_out);
     FILE *fp = fopen(MSG_PATH, "w");
-    if (fp != NULL) {
-      fwrite(out, sizeof(char), strlen(out), fp);
-      fclose(fp);
-    } else {
+    if (!fp) {
       fprintf(stderr, "Error: File %s cannot be written\n", MSG_PATH);
       exit(1);
+    } else {
+      fwrite(out, sizeof(char), strlen(out), fp);
+      fclose(fp);
     }
     if (PHASE == phases[n_phases-1]) {
-      save_data(gml, 3);
-      FILE *fp = fopen(FINAL_PATH, "w");
-      if (fp == NULL) {
-        fprintf(stderr, "Error: File %s cannot be written\n", FINAL_PATH);
+      if (GSIG->desc->has_gml) {
+        save_data(gml, 3);
+      }
+      FILE *fp = fopen(LAST_PATH, "w");
+      if (!fp) {
+        fprintf(stderr, "Error: File %s cannot be written\n", LAST_PATH);
         exit(1);
       }
       fclose(fp);
@@ -317,7 +341,7 @@ void verify_signature(groupsig_key_t *grpkey,
   int rc = 255;
   rc = groupsig_verify(&ret, sig, msg, grpkey);
   check_rc(rc, "verify");
-  printf("%d\n", ret); // 0 means OK
+  printf("%d\n", ret); // 1 means valid signature
 }
 
 void revoke_signature_identity(groupsig_key_t *grpkey, groupsig_key_t *mgrkey,
@@ -336,7 +360,7 @@ void revoke_signature_identity(groupsig_key_t *grpkey, groupsig_key_t *mgrkey,
   check_rc(rc, "reveal");
   rc = crl_export(crl, CRL, CRL_FILE);
   check_rc(rc, "crl");
-  printf("%d\n", 1);
+  printf("1\n");
 }
 
 void status_signature_identity(groupsig_key_t *grpkey,
@@ -350,28 +374,84 @@ void status_signature_identity(groupsig_key_t *grpkey,
   printf("%d\n", ret); // 1 means revoked
 }
 
-void groupsig_mode() {
-  if ((JOIN + VER + REV + STAT) > 1) {
-    fprintf(stderr, "Error: join, verify, revoke or status are mutually exclusive\n");
+message_t *message_from_hash() {
+  FILE *fp = fopen(ASSET_PATH, "rb");
+  if (!fp) {
+    fprintf(stderr, "Error: %s file cannot be read\n", ASSET_PATH);
     exit(1);
   }
-  setup_seed();
+
+  SHA256_CTX sha256;
+  unsigned char hash[SHA256_DIGEST_LENGTH];
+  unsigned char buffer[4096];
+  size_t bytesRead = 0;
+  SHA256_Init(&sha256);
+  while ((bytesRead = fread(buffer, 1, sizeof(buffer), fp)) > 0)
+    SHA256_Update(&sha256, buffer, bytesRead);
+  fclose(fp);
+  SHA256_Final(hash, &sha256);
+  char outputBuffer[65];
+  for(int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+    sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
+  outputBuffer[64] = 0;
+  return message_from_string(outputBuffer);
+}
+
+void sign() {
+  if (!SIG_PATH || !MEMKEY || !ASSET_PATH) {
+    fprintf(stderr, "Error: missing required argument --sign/--mkey/--asset\n");
+    exit(1);
+  }
+  groupsig_key_t *gkey;
+  load_data(&gkey, 0);
+  groupsig_key_t *mkey;
+  load_data(&mkey, 2);
+  message_t *text = message_from_hash();
+  groupsig_signature_t *sig = groupsig_signature_init(CODE);
+  check_ptr(sig, "signature_init");
+  int rc = groupsig_sign(sig, text, mkey, gkey, UINT_MAX);
+  check_rc(rc, "sign");
+  save_data(sig, 4);
+  message_free(text); text = NULL;
+  groupsig_grp_key_free(gkey); gkey = NULL;
+  groupsig_mem_key_free(mkey); mkey = NULL;
+  groupsig_signature_free(sig); sig = NULL;
+}
+
+void verify() {
+  if (!SIG_PATH || !ASSET_PATH) {
+    fprintf(stderr, "Error: missing required argument --verify-asset/--asset\n");
+    exit(1);
+  }
+  groupsig_key_t *gkey;
+  load_data(&gkey, 0);
+  groupsig_signature_t *sig;
+  load_data(&sig, 4);
+  message_t *text = message_from_hash();
+  verify_signature(gkey, sig, text);
+  message_free(text); text = NULL;
+  groupsig_grp_key_free(gkey); gkey = NULL;
+  groupsig_signature_free(sig); sig = NULL;
+}
+
+void groupsig_mode() {
   groupsig_key_t *grpkey;
   groupsig_key_t *mgrkey;
   gml_t *gml;
   crl_t *crl;
-  if (!file_readable(GRPKEY) || !file_readable(MGRKEY)
-      || !file_readable(GML)) {
+  if (!file_readable(GRPKEY) || !file_readable(MGRKEY)) {
     if (SCHEME[0] == '\0') {
-      fprintf(stderr, "Error: scheme missing, allowed values are ps16, gl19 and kty04\n");
-      exit(1);
-    } else if (!valid_schemes()) {
-      fprintf(stderr, "Error: invalid scheme, allowed values are ps16, gl19 and kty04\n");
+      fprintf(stderr,
+              "Error: scheme missing, allowed values: bbs04, ps16, cpy06 or kty04\n");
       exit(1);
     } else {
       int rc = 255;
       rc = groupsig_get_code_from_str(&CODE, SCHEME);
-      check_rc(rc, "get_code_from_str");
+      if (rc != IOK || !valid_schemes()) {
+        fprintf(stderr,
+                "Error: invalid scheme, allowed values: bbs04, ps16, cpy06 or kty04\n");
+        exit(1);
+      }
       metadata_from_code();
       rc = groupsig_init(CODE, time(NULL));
       check_rc(rc, "init");
@@ -380,8 +460,10 @@ void groupsig_mode() {
     check_ptr(grpkey, "grpkey");
     mgrkey = groupsig_mgr_key_init(CODE);
     check_ptr(mgrkey, "mgrkey");
-    gml = gml_init(CODE);
-    check_ptr(gml, "gml");
+    if (GSIG->desc->has_gml) {
+      gml = gml_init(CODE);
+      check_ptr(gml, "gml");
+    }
     if (GSIG->desc->has_crl) {
       crl = crl_init(CODE);
       check_ptr(crl, "crl");
@@ -391,7 +473,9 @@ void groupsig_mode() {
     check_rc(rc, "groupsig_setup");
     save_data(grpkey, 0);
     save_data(mgrkey, 1);
-    save_data(gml, 3);
+    if (GSIG->desc->has_gml) {
+      save_data(gml, 3);
+    }
     if (GSIG->desc->has_crl) {
       rc = crl_export(crl, CRL, CRL_FILE);
       check_rc(rc, "crl");
@@ -399,15 +483,30 @@ void groupsig_mode() {
   } else {
     load_data(&grpkey, 0);
     load_data(&mgrkey, 1);
-    load_data(&gml, 3);
-    if (GSIG->desc->has_crl)
+    if (GSIG->desc->has_gml) {
+      if (!file_readable(MGRKEY)) {
+        fprintf(stderr,
+                "Error: GML file not readable\n");
+        exit(1);
+      }
+      load_data(&gml, 3);
+    }
+    if (GSIG->desc->has_crl) {
+      if (!file_readable(MGRKEY)) {
+        fprintf(stderr,
+                "Error: CRL file not readable\n");
+        exit(1);
+      }
       crl = crl_import(CODE, CRL_FILE, CRL);
-    if (!grpkey || !mgrkey || !gml){
+    }
+    if (!grpkey || !mgrkey ||
+        (GSIG->desc->has_gml && !gml) ||
+        (GSIG->desc->has_crl && !crl)){
       fprintf(stderr, "Error: importing groupsig material, does scheme match?\n");
       exit(1);
     }
   }
-  if (!JOIN && !VER && !REV && !STAT && !quiet_flag) {
+  if (!JOIN && !REV && !STAT && !quiet_flag) {
     print_data(grpkey, 0);
   } else if (JOIN) {
     if (!MSG_PATH) {
@@ -415,24 +514,11 @@ void groupsig_mode() {
       exit(1);
     }
     message_t *msg;
-    if (!PHASE) {
+    if (!PHASE)
       msg = message_init();
-    } else {
+    else
       load_message(&msg);
-    }
     join(msg, grpkey, mgrkey, gml);
-    message_free(msg); msg = NULL;
-  } else if (VER) {
-    if (!MSG_PATH) {
-      fprintf(stderr, "Error: message missing\n");
-      exit(1);
-    }
-    message_t *msg;
-    load_message(&msg);
-    groupsig_signature_t *sig;
-    load_data(&sig, 4);
-    verify_signature(grpkey, sig, msg);
-    groupsig_signature_free(sig); sig = NULL;
     message_free(msg); msg = NULL;
   } else if (REV) {
     if (!GSIG->desc->has_crl) {
@@ -455,7 +541,9 @@ void groupsig_mode() {
   }
   groupsig_grp_key_free(grpkey); grpkey = NULL;
   groupsig_mgr_key_free(mgrkey); mgrkey = NULL;
-  gml_free(gml); gml = NULL;
+  if (GSIG->desc->has_gml) {
+    gml_free(gml); gml = NULL;
+  }
   if (GSIG->desc->has_crl) {
     crl_free(crl); crl = NULL;
   }
@@ -496,14 +584,17 @@ void toolbox_usage(char** argv, int error) {
           "\tmondrian\t\t Mondrian functionality\n"
           "\thelp\t\t\t This help\n\n"
           "Groupsig options:\n"
-          "\t--scheme|-s SCHEME\t Scheme to be used: ps16, kty04\n"
+          "\t--scheme|-s SCHEME\t Scheme to be used: bbs04, ps16, cpy06 and kty04\n"
           "\t--revoke|-r SIG\t\t Signature file path to revoke\n"
-          "\t--status|-r SIG\t\t Signature file path to check revocation status\n"
-          "\t--verify|-r SIG\t\t Signature file path to verify\n"
+          "\t--status|-t SIG\t\t Signature file path to check revocation status\n"
+          "\t--sign|-g SIG\t\t Output signature file path\n"
+          "\t--asset|-A ASSET\t\t Asset file path\n"
+          "\t--mkey|-M MKEY\t\t Member key file path\n"
+          "\t--verify|-v SIG\t\t Signature file path to verify\n"
           "\t--join|-j PHASE\t\t Join phase to execute\n"
           "\t--message|-m MSG\t Message file path\n"
-          "\t--directory|-m DIR\t Group signature crypto material path. Must exist.\n"
-          "\t--affix|-m AFFIX\t Affix to add at the end of each crypto material file\n"
+          "\t--directory|-d DIR\t Group signature crypto material path. Must exist.\n"
+          "\t--affix|-a AFFIX\t Affix to add at the end of each crypto material file\n"
           "\t--quiet\t\t Do not print group key\n\n"
           "Mondrian flags:\n"
           "\t--anonymize\t\t If present, anonymize output attributes\n"
@@ -527,10 +618,13 @@ int toolbox_main(int argc, char** argv) {
     /* libgroupsig options */
     {"scheme", required_argument, 0, 's'},
     {"join", required_argument, 0, 'j'},
+    {"sign", required_argument, 0, 'g'},
     {"verify", required_argument, 0, 'v'},
     {"revoke", required_argument, 0, 'r'},
     {"status", required_argument, 0, 't'},
     {"message", required_argument, 0, 'm'},
+    {"mkey", required_argument, 0, 'M'},
+    {"asset", required_argument, 0, 'A'},
     {"directory", required_argument, 0, 'd'},
     {"affix", required_argument, 0, 'a'},
     {"quiet", no_argument, &quiet_flag, 1},
@@ -548,7 +642,7 @@ int toolbox_main(int argc, char** argv) {
     {0, 0, 0, 0}
   };
 
-  while ((opt = getopt_long(argc, argv, "s:j:v:r:t:m:d:a:i:k:o:h",
+  while ((opt = getopt_long(argc, argv, "s:j:v:r:t:m:d:a:i:k:o:hg:A:M:",
                             long_options, &opt_idx)) != -1) {
     switch (opt) {
     case 0:
@@ -556,13 +650,17 @@ int toolbox_main(int argc, char** argv) {
       if (long_options[opt_idx].flag != 0)
         break;
     case 's':
-      strcpy(SCHEME, optarg);
+      strncpy(SCHEME, optarg, 10);
       for (char *p = SCHEME; *p; ++p) *p = tolower(*p);
       break;
     case 'j':
       check_digit(optarg, "join");
       PHASE = atoi(optarg);
       JOIN = 1;
+      break;
+    case 'g':
+      SIG_PATH = optarg;
+      SIG = 1;
       break;
     case 'v':
       SIG_PATH = optarg;
@@ -578,6 +676,12 @@ int toolbox_main(int argc, char** argv) {
       break;
     case 'm':
       MSG_PATH = optarg;
+      break;
+    case 'M':
+      MEMKEY = optarg;
+      break;
+    case 'A':
+      ASSET_PATH = optarg;
       break;
     case 'd':
       DIRE = optarg;
@@ -612,10 +716,22 @@ int toolbox_main(int argc, char** argv) {
     fprintf(stderr, "Error: groupsig and mondrian are mutually exclusive\n");
     exit(1);
   } else if (groupsig_flag) {
-    groupsig_mode();
-  } else if (mondrian_flag) {
+    if ((JOIN + SIG + VER + REV + STAT) > 1) {
+      fprintf(stderr, "Error: join, sign, verify, revoke or status are mutually exclusive\n");
+      exit(1);
+    }
+    setup_seed();
+    if (!SIG && !VER)
+      groupsig_mode();
+    else {
+      if (SIG)
+        sign();
+      else
+        verify();
+    }
+  } else if (mondrian_flag)
     mondrian_mode();
-  } else
+  else
     toolbox_usage(argv, 0);
   return 0;
 }
