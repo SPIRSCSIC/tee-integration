@@ -27,8 +27,8 @@ def strfy_time(seconds):
 
 def _ssh_qemu_cmd(cmd):
     subprocess.run(
-        f"docker exec -t {CONT_NAME} ssh"
-        f" -i /keystone/build/overlay/root/.ssh/id_rsa "
+        f"docker exec -t {CONT_NAME} ssh "
+        f"-i /keystone/build/overlay/root/.ssh/id_rsa "
         f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
         f"-p 7777 root@localhost {cmd}",
         shell=True,
@@ -40,8 +40,8 @@ def _ssh_qemu_cmd(cmd):
 def setup_server(alg):
     # copy crypto material
     subprocess.run(
-        f"docker exec -t {CONT_NAME} scp"
-        f" -i /keystone/build/overlay/root/.ssh/id_rsa "
+        f"docker exec -t {CONT_NAME} scp "
+        f"-i /keystone/build/overlay/root/.ssh/id_rsa "
         f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
         f"-P 7777 -r crypto root@localhost:/root",
         shell=True,

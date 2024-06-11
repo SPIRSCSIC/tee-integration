@@ -2,10 +2,10 @@ openapi: 3.0.0
 servers:
   # Added by API Auto Mocking Plugin
   - description: SwaggerHub API Auto Mocking
-    url: https://virtserver.swaggerhub.com/schica/groupsig/1.0.0
+    url: https://virtserver.swaggerhub.com/schica/groupsig/1.1.0
 info:
   description: Groupsig server API
-  version: "1.0.0"
+  version: "1.1.0"
   title: Groupsig Server API
   contact:
     email: sergio.chica@csic.es
@@ -66,11 +66,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /groupsig/key:
+  /groupsig:
     get:
       tags:
         - open
       summary: Retrieve public group key
+      parameters:
+        - in: query
+          name: monitor
+          schema:
+            type: integer
+            description: Is monitor flag
+            enum: [0, 1]
       responses:
         '200':
           description: OK
@@ -156,10 +163,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   /groupsig/status:
-    get:
+    post:
       tags:
         - open
       summary: Retrieve signature's identity status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestStatus'
       responses:
         '200':
           description: OK
@@ -266,6 +279,16 @@ components:
           format: byte
           description: Base64 encoded token signature
           example: "AgAwAAAA4TKZsukOUmR...lJ67="
+        signature:
+          type: string
+          format: byte
+          description: Base64 encoded signature
+          example: "AgAwAAAA4TKZsukOUmR...lJ67="
+    RequestStatus:
+      type: object
+      required:
+        - signature
+      properties:
         signature:
           type: string
           format: byte

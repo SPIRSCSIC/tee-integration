@@ -137,7 +137,7 @@ def anonymization_anonymize(scheme):
 def groupsig_key():
     cmd_args = ["groupsig"]
     grpkey_k = "producers"
-    monitor = request.form.get("monitor")
+    monitor = request.form.get("monitor") or request.args.get("monitor")
     if monitor is not None and monitor == "1":
         cmd_args.extend(["--affix", ARGS.affix])
         grpkey_k = ARGS.affix

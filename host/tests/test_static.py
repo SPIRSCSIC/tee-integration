@@ -220,6 +220,17 @@ class TestMonitor:
         )
         assert not ret.returncode, "CLI not working as expected"
 
+    def test_groupsig_query_param(self):
+        cmd = ("wget --no-check-certificate "
+               "--certificate=/spirs_tee_sdk/crypto/producers/usr1.crt "
+               "--private-key=/spirs_tee_sdk/crypto/producers/usr1.key")
+        ret = subprocess.run(
+            f"{cmd} https://localhost:5000/groupsig -O /tmp/grp && "
+            f"{cmd} https://localhost:5000/groupsig?monitor=1 -O /tmp/grp_mon && "
+            f"cmp -s /tmp/grp /tmp/grp_mon", shell=True
+        )
+        assert not ret.returncode, "Query parameter not workign as expected"
+
     def test_init(self, _mon):
         assert (
             _mon.memkey is None and _mon.grpkey is not None

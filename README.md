@@ -108,7 +108,7 @@ make -C build -j qemu
 
 ## API
 We have uploaded the API specification using the OpenAPI v3 standard. Check it
-at https://app.swaggerhub.com/apis/schica/groupsig/1.0.0
+at https://app.swaggerhub.com/apis/schica/groupsig/1.1.0
 
 > **Note**: There are two functions offered in the `gdemos.ke` executable that are not available
 > in the API: `--sign/--verify`, these functions are provided as a way to
