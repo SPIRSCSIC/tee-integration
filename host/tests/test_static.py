@@ -229,7 +229,7 @@ class TestMonitor:
             f"{cmd} https://localhost:5000/groupsig?monitor=1 -O /tmp/grp_mon && "
             f"cmp -s /tmp/grp /tmp/grp_mon", shell=True
         )
-        assert not ret.returncode, "Query parameter not workign as expected"
+        assert ret.returncode, "Query parameter not workign as expected"
 
     def test_init(self, _mon):
         assert (

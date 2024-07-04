@@ -7,6 +7,9 @@ ExternalProject_Add(libgroupsig
   CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
   INSTALL_COMMAND ""
 )
+# If we add src and src/test/basic here, it would load the code in the first part of the compilation
+# throwing errors everywhere. We want to include those header files in the second part of the compilation
+# e.g the enclave
 include_directories(${CMAKE_SOURCE_DIR}/modules/libgroupsig/src/include)
 link_directories(${CMAKE_BINARY_DIR}/libgroupsig-build/lib)
 include_directories(${CMAKE_BINARY_DIR}/libgroupsig-build/external/include)

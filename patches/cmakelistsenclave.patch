@@ -1,5 +1,5 @@
 diff --git a/enclave/CMakeLists.txt b/enclave/CMakeLists.txt
-index a37777b..3e67519 100644
+index a37777b..5d22c49 100644
 --- a/enclave/CMakeLists.txt
 +++ b/enclave/CMakeLists.txt
 @@ -2,7 +2,8 @@ include(../macros.cmake)
@@ -12,16 +12,18 @@ index a37777b..3e67519 100644
  
  if (NOT DEFINED TA_UUID)
    message(FATAL_ERROR "Please set TA_UUID variable")
-@@ -14,10 +15,20 @@ set(TA_UUID ${TA_UUID} PARENT_SCOPE)
+@@ -14,10 +15,22 @@ set(TA_UUID ${TA_UUID} PARENT_SCOPE)
  set(TA_BINARY ${TA_UUID}.ta)
  
  # Enclave source files
 -set(TA_SRC tee_internal_api/src/main.c tee_internal_api/src/tee_random.c ta_callbacks.c)
 +# set(TA_SRC tee_internal_api/src/main.c tee_internal_api/src/tee_random.c ta_callbacks.c)
 +set(TA_SRC
-+  gicp/mondrian.c
 +  gicp/toolbox.c
-+  gicp/pairing.cpp
++  gicp/pairing.cpp  # Not used in the code, but if missing, the whole program does not compile... OK
++  ${CMAKE_SOURCE_DIR}/modules/libgroupsig/src/test/basic/test.c
++  ${CMAKE_SOURCE_DIR}/modules/libgroupsig/src/test/basic/benchmark.c
++  ${CMAKE_SOURCE_DIR}/modules/libgroupsig/src/test/basic/utils.c
 +  tee_internal_api/src/main.c
 +  tee_internal_api/src/tee_random.c
 +  ta_callbacks_gicp.c

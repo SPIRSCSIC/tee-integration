@@ -16,7 +16,7 @@ from werkzeug.serving import WSGIRequestHandler
 
 
 A_SCHEMES = ["mondrian"]
-BS = ["./gdemos.ke"]
+BS = ["./toolbox.ke"]
 FINAL_PATH = "/root/.last"
 OK = re.compile(rb"Package\n(.*)", re.S)
 ERR = re.compile(rb"(.*?)\[host\]", re.S)

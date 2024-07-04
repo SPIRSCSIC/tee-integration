@@ -12,7 +12,6 @@ target_link_libraries(${TA_BINARY}
   dl21
   dl21seq
   groupsig-static
-  groupsig-demos
   sys
   math
   base64
@@ -31,3 +30,4 @@ target_link_libraries(${TA_BINARY}
 )
 
 include_directories("${PROJECT_SOURCE_DIR}/modules/libgroupsig/src")
+include_directories("${PROJECT_SOURCE_DIR}/modules/libgroupsig/src/test/basic")

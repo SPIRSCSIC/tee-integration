@@ -50,9 +50,9 @@ def setup_server(alg):
     )
     # the server is started using <algorithm>
     print(f"[*] Creating signature group for monitors ({alg})")
-    _ssh_qemu_cmd(f"./gdemos.ke groupsig -s {alg} -a _mon --quiet")
+    _ssh_qemu_cmd(f"./toolbox.ke groupsig -s {alg} -a _mon --quiet")
     print(f"[*] Creating signature group for producers ({alg})")
-    _ssh_qemu_cmd(f"./gdemos.ke groupsig -s {alg} --quiet")
+    _ssh_qemu_cmd(f"./toolbox.ke groupsig -s {alg} --quiet")
     print("[*] Running the server in background...")
     _ssh_qemu_cmd(
         f"python3 ./gicp_api/server.py -C crypto/gms/usr1.crt "

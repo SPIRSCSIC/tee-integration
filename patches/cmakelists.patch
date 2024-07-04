@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ea4b56b..8be15a0 100644
+index ea4b56b..99b0e64 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.10)
@@ -8,7 +8,7 @@ index ea4b56b..8be15a0 100644
  # Set Application Name
 -set(APP_NAME "template")
 +# set(APP_NAME "template")
-+set(APP_NAME "gdemos")
++set(APP_NAME "toolbox")
  
  # This determines the size of the untrusted uffer (UTM)
  # that is shared between the CA and the TA

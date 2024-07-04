@@ -148,3 +148,5 @@ if [ ! -d "$REPO/build" ] || [ -n "$changed" ] || [ -n "$_build" ]; then
     /usr/bin/time -f "4;Building image;%E" -o $SETUP_LOG  --append \
                   docker exec "$CNAME" sh -c 'make -C build -j image' > $OUT 2>&1
 fi
+
+exit 0

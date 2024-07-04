@@ -125,25 +125,4 @@ if (HW)
 endif ()
 add_subdirectory (${PROJECT_SOURCE_DIR}/src/groupsig ${CMAKE_BINARY_DIR}/src/groupsig)
 add_subdirectory (${PROJECT_SOURCE_DIR}/src/tools ${CMAKE_BINARY_DIR}/src/tools)
-
-# Create an executable "demos" to run the basic tests (without compiling gtest)
-add_executable(demos
-  ${PROJECT_SOURCE_DIR}/src/test/basic/demos.c
-  ${PROJECT_SOURCE_DIR}/src/test/basic/kty04.c
-  ${PROJECT_SOURCE_DIR}/src/test/basic/ps16.c
-  ${PROJECT_SOURCE_DIR}/src/test/basic/utils.c)
-target_include_directories(demos PUBLIC src/test/basic)
-# If -DHW present, then load PYNQ dependencies as well
-# We need to export LD_LIBRARY_PATH with the path to mcl -> export LD_LIBRARY_PATH=$PWD/external/lib/:$LD_LIBRARY_PATH
-if (HW)
-  target_link_libraries(demos kty04 ps16 crypto pynq groupsig cma pthread)
-else ()
-  target_link_libraries(demos kty04 ps16 groupsig)
-endif ()
-
-add_library(groupsig-demos
-  ${PROJECT_SOURCE_DIR}/src/test/basic/kty04.c
-  ${PROJECT_SOURCE_DIR}/src/test/basic/ps16.c
-  ${PROJECT_SOURCE_DIR}/src/test/basic/utils.c)
-target_include_directories(groupsig-demos PUBLIC tests)
-target_link_libraries(groupsig-demos kty04 ps16 groupsig)
+add_subdirectory (${PROJECT_SOURCE_DIR}/src/test/basic ${CMAKE_BINARY_DIR}/src/test/basic)

@@ -44,49 +44,6 @@ void TA_CloseSessionEntryPoint(void *session)
         free(session);
 }
 
-TEE_Result test_mondrian(uint32_t param_types,
-                         TEE_Param params[TEE_NUM_PARAMS])
-{
-  mondrian_test(); // defined in tests/mondrian.c
-  return TEE_SUCCESS;
-}
-
-TEE_Result test_pairings(uint32_t param_types,
-                        TEE_Param params[TEE_NUM_PARAMS])
-{
-  pairings_test("123", "456"); // defined in tests/pairing.cpp
-  return TEE_SUCCESS;
-}
-
-// below tests are defined in libgroupsig/src/test/basic
-TEE_Result test_kty04(uint32_t param_types,
-                            TEE_Param params[TEE_NUM_PARAMS])
-{
-  kty04_test();
-  return TEE_SUCCESS;
-}
-
-TEE_Result test_ps16(uint32_t param_types,
-                     TEE_Param params[TEE_NUM_PARAMS])
-{
-  ps16_test();
-  return TEE_SUCCESS;
-}
-
-TEE_Result benchmark_kty04(uint32_t param_types,
-                     TEE_Param params[TEE_NUM_PARAMS])
-{
-  kty04_benchmark();
-  return TEE_SUCCESS;
-}
-
-TEE_Result benchmark_ps16(uint32_t param_types,
-                     TEE_Param params[TEE_NUM_PARAMS])
-{
-  ps16_benchmark();
-  return TEE_SUCCESS;
-}
-
 TEE_Result toolbox(uint32_t param_types,
                    TEE_Param params[TEE_NUM_PARAMS])
 {
@@ -118,18 +75,6 @@ TEE_Result TA_InvokeCommandEntryPoint(void *session, uint32_t cmd,
     debug("%s\n", __FUNCTION__);
 
     switch (cmd) {
-    case TA_DEMO_MONDRIAN:
-      return test_mondrian(param_types, params);
-    case TA_DEMO_PAIRINGS:
-      return test_pairings(param_types, params);
-    case TA_DEMO_KTY04:
-      return test_kty04(param_types, params);
-    case TA_DEMO_PS16:
-      return test_ps16(param_types, params);
-    case TA_BENCHMARK_KTY04:
-      return benchmark_kty04(param_types, params);
-    case TA_BENCHMARK_PS16:
-      return benchmark_ps16(param_types, params);
     case TA_TOOLBOX:
       return toolbox(param_types, params);
     default:

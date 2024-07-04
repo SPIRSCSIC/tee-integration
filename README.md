@@ -110,14 +110,14 @@ make -C build -j qemu
 We have uploaded the API specification using the OpenAPI v3 standard. Check it
 at https://app.swaggerhub.com/apis/schica/groupsig/1.1.0
 
-> **Note**: There are two functions offered in the `gdemos.ke` executable that are not available
+> **Note**: There are two functions offered in the `toolbox.ke` executable that are not available
 > in the API: `--sign/--verify`, these functions are provided as a way to
 > sign/verify without using python library, however it is very inadvisable due
 > to the overhead added when creating+opening a connection with the TA (slow) and
 > the fact that you would need to have access to a member key.
 > ```bash
-> ./gdemos.ke groupsig --sign /root/sig --asset /root/asset --mkey /root/mkey
-> ./gdemos.ke groupsig --verify /root/sig --asset /root/asset
+> ./toolbox.ke groupsig --sign /root/sig --asset /root/asset --mkey /root/mkey
+> ./toolbox.ke groupsig --verify /root/sig --asset /root/asset
 > ```
 > In a future iteration of the library, we aim to move this functionality to the RA so that
 > the overhead added by the TA is removed.
@@ -126,7 +126,7 @@ at https://app.swaggerhub.com/apis/schica/groupsig/1.1.0
 The code of the clients (producers and monitors) can be found under
 `host/gicp_api`. There are 3 elements:
 - `server.py`: This code runs in the same machine as the TEE. It'll execute the commands
-  through `gdemos.ke`
+  through `toolbox.ke`
 - `client.py`: This is the client used by every entity that is in charge of signing assets.
 - `client_mon.py`: This is the client used by entities (monitors) that have the permission to revoke signature identities.
 
@@ -147,9 +147,9 @@ located in the machine/QEMU in charge of the group (group manager).
 These commands serve as an example of deploying the group in QEMU
 ```bash
 # Create the group for producers
-./gdemos.ke groupsig -s cpy06
+./toolbox.ke groupsig -s cpy06
 # Create the group for monitors
-./gdemos.ke groupsig -s cpy06 -a _mon
+./toolbox.ke groupsig -s cpy06 -a _mon
 # Launch the server
 python3 gicp_api/server.py -C path/CERT -K path/KEY -c path/CHAIN
 # python3 gicp_api/server.py -C crypto/gms/usr1.crt -K crypto/gms/usr1.key -c crypto/chain.pem
