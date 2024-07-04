@@ -1,11 +1,11 @@
---- run-qemu.sh.in	2024-02-05 15:46:34.000000000 +0100
-+++ run-qemu.sh.in.flask	2024-02-08 10:58:03.972976561 +0100
+--- run-qemu.sh.in	2024-07-04 16:00:37.983552514 +0200
++++ run-qemu.sh.in.flask	2024-07-04 16:24:22.111547738 +0200
 @@ -34,7 +34,7 @@
   @qemu_kernel_options@ \
   @extra_qemu_options@ \
   ${EXTRA_QEMU_OPTIONS:-} \
-- -netdev user,id=net0,net=192.168.100.1/24,dhcpstart=192.168.100.128,hostfwd=tcp::${HOST_PORT}-:22 \
-+ -netdev user,id=net0,net=192.168.100.1/24,dhcpstart=192.168.100.128,hostfwd=tcp::${HOST_PORT}-:22,hostfwd=tcp::5000-:5000 \
+- -netdev user,id=net0,net=192.168.100.1/24,dhcpstart=192.168.100.128,hostfwd=tcp::${HOST_PORT}-:22,hostfwd=tcp::8067-:8067,hostfwd=tcp::8068-:8068,hostfwd=tcp::830-:830 \
++ -netdev user,id=net0,net=192.168.100.1/24,dhcpstart=192.168.100.128,hostfwd=tcp::${HOST_PORT}-:22,hostfwd=tcp::8067-:8067,hostfwd=tcp::8068-:8068,hostfwd=tcp::830-:830,hostfwd=tcp::5000-:5000 \
   -device virtio-net-device,netdev=net0 \
   -device virtio-rng-pci \
-  -smp $SMP
+  -serial mon:stdio -serial file:./serial.out \
